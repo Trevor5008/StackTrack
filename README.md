@@ -5,13 +5,17 @@ Expo, React Native, and TypeScript.
 
 ## Run locally
 
+This project targets **Expo SDK 54**, which matches the Expo Go version currently
+on the App Store / Play Store.
+
 ```bash
 npm install
 npx expo start
 ```
 
 Scan the QR code with Expo Go, or press `a`, `i`, or `w` for an Android,
-iOS, or web target.
+iOS, or web target. Keep the phone and computer on the same network when
+possible (hotspot works if client isolation is not blocking device traffic).
 
 ## MVP features
 
