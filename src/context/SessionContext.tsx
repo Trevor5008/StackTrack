@@ -8,6 +8,17 @@ import {
   useState,
 } from 'react';
 
+/**
+ * Session context value
+ * @returns {SessionContextValue}
+ * @description This value are used to handle the session context value.
+ * @example
+ * <SessionProvider>
+ *   <SessionContext.Provider value={value}>
+ *     {children}
+ *   </SessionContext.Provider>
+ * </SessionProvider>
+ */
 import {
   defaultSettings,
   loadSessions,
@@ -17,6 +28,17 @@ import {
 } from '@/src/storage/sessionStore';
 import { AppSettings, Session, SessionInput } from '@/src/types/session';
 
+/**
+ * Session context value
+ * @returns {SessionContextValue}
+ * @description This value are used to handle the session context value.
+ * @example
+ * <SessionProvider>
+ *   <SessionContext.Provider value={value}>
+ *     {children}
+ *   </SessionContext.Provider>
+ * </SessionProvider>
+ */
 type SessionContextValue = {
   sessions: Session[];
   settings: AppSettings;
@@ -30,6 +52,17 @@ type SessionContextValue = {
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
+/**
+ * Newest first
+ * @returns {Session[]}
+ * @description This function is used to sort the sessions by the newest first.
+ * @example
+ * <SessionProvider>
+ *   <SessionContext.Provider value={value}>
+ *     {children}
+ *   </SessionContext.Provider>
+ * </SessionProvider>
+ */
 function newestFirst(sessions: Session[]): Session[] {
   return [...sessions].sort(
     (a, b) =>
@@ -38,33 +71,68 @@ function newestFirst(sessions: Session[]): Session[] {
   );
 }
 
+/**
+ * Create id
+ * @returns {string}
+ * @description This function is used to create a unique id.
+ * @example
+ * <SessionProvider>
+ *   <SessionContext.Provider value={value}>
+ *     {children}
+ *   </SessionContext.Provider>
+ * </SessionProvider>
+ */
 function createId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/**
+ * Session provider
+ * @returns {JSX.Element}
+ * @description This component is used to provide the session context.
+ * @example
+ * <SessionProvider>
+ *   <SessionContext.Provider value={value}>
+ *     {children}
+ *   </SessionContext.Provider>
+ * </SessionProvider>
+ */
 export function SessionProvider({ children }: PropsWithChildren) {
+  // sessions to handle the sessions state
   const [sessions, setSessions] = useState<Session[]>([]);
+  // settings to handle the settings state
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+  // is loading to handle the is loading state
   const [isLoading, setIsLoading] = useState(true);
+  // error to handle the error state
   const [error, setError] = useState<string | null>(null);
 
+  // hook to handle page load
   useEffect(() => {
+    // promise all to handle the promise all
     Promise.all([loadSessions(), loadSettings()])
+      // then set the sessions and settings
       .then(([storedSessions, storedSettings]) => {
         setSessions(newestFirst(storedSessions));
         setSettings(storedSettings);
       })
+      // then set the error
       .catch(() => setError('Could not load your saved StackTrack data.'))
+      // then set the is loading to false
       .finally(() => setIsLoading(false));
   }, []);
 
+  // persist sessions to handle the persist sessions
   const persistSessions = useCallback(async (next: Session[]) => {
+    // sorted to handle the sorted state
     const sorted = newestFirst(next);
     setSessions(sorted);
+    // try to save the sessions
     try {
       await saveSessions(sorted);
       setError(null);
     } catch {
+      // if the sessions could not be saved, set the error
       setError('Your latest change could not be saved.');
       throw new Error('Failed to persist sessions');
     }
