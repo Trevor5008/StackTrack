@@ -1,3 +1,4 @@
+// define base color palette
 export const colors = {
   background: '#08110E',
   surface: '#11201A',
@@ -13,6 +14,7 @@ export const colors = {
   white: '#FFFFFF',
 };
 
+// define standardized spacing values
 export const spacing = {
   xs: 4,
   sm: 8,
@@ -21,6 +23,7 @@ export const spacing = {
   xl: 32,
 };
 
+// standardized radius for components
 export const radius = {
   sm: 8,
   md: 14,

@@ -44,12 +44,23 @@ export default function RootLayout() {
   return <RootLayoutNav />;
 }
 
+/**
+ * Root layout navigation
+ * @returns {JSX.Element}
+ * @description This component is used to render the root layout navigation.
+ * @example
+ * <RootLayoutNav />
+ */
 function RootLayoutNav() {
+  // return the root layout navigation
   return (
+    // session provider to handle the session provider
     <SessionProvider>
       <ThemeProvider
+        // value to handle the value
         value={{
           ...DarkTheme,
+          // colors to handle the colors
           colors: {
             ...DarkTheme.colors,
             background: colors.background,

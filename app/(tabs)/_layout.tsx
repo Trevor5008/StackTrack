@@ -3,6 +3,13 @@ import { Text } from 'react-native';
 
 import { colors } from '@/src/theme';
 
+/**
+ * root layout for the tabs
+ * - style the tab bar and the headers
+ * - it is also used to navigate between the tabs
+ * - it is also used to style the headers
+ * - it is also used to style the headers
+*/
 export default function TabLayout() {
   return (
     <Tabs
@@ -17,6 +24,7 @@ export default function TabLayout() {
         headerTintColor: colors.text,
         headerTitleStyle: { fontWeight: '700' },
       }}>
+      {/* dashboard screen */}
       <Tabs.Screen
         name="index"
         options={{
@@ -26,6 +34,7 @@ export default function TabLayout() {
           ),
         }}
       />
+      {/* add session screen */}
       <Tabs.Screen
         name="add-session"
         options={{
@@ -35,6 +44,7 @@ export default function TabLayout() {
           ),
         }}
       />
+      {/* history screen */}
       <Tabs.Screen
         name="history"
         options={{
@@ -44,6 +54,7 @@ export default function TabLayout() {
           ),
         }}
       />
+      {/* settings screen */}
       <Tabs.Screen
         name="settings"
         options={{

@@ -13,33 +13,61 @@ import { colors, radius, spacing } from '@/src/theme';
 
 const currencies = ['USD', 'CAD', 'EUR', 'GBP'];
 
+/**
+ * Settings screen
+ * @returns {JSX.Element}
+ * @description This screen is used to display the settings.
+ * @example
+ * <SettingsScreen />
+ */
 export default function SettingsScreen() {
   const { settings, updateSettings } = useSessions();
+  // starting bankroll to handle the starting bankroll
   const [startingBankroll, setStartingBankroll] = useState(
     String(settings.startingBankroll),
   );
+  // currency to handle the currency
   const [currency, setCurrency] = useState(settings.currency);
+  // message to handle the message
   const [message, setMessage] = useState<string | null>(null);
+  // save succeeded to handle the save succeeded
   const [saveSucceeded, setSaveSucceeded] = useState(false);
 
+  // Handles the loading of the settings
   useEffect(() => {
+    // set starting bankroll to handle the starting bankroll
     setStartingBankroll(String(settings.startingBankroll));
+    // set currency to handle the currency
     setCurrency(settings.currency);
   }, [settings]);
 
+  /**
+   * Handles the saving of the settings
+   * @returns {Promise<void>}
+   * @description This function is used to save the settings.
+   * @example
+   * <SettingsScreen />
+   */
   const handleSave = async () => {
+    // bankroll to handle the bankroll
     const bankroll = Number(startingBankroll);
     if (!Number.isFinite(bankroll) || bankroll < 0) {
+      // set message to handle the message
       setMessage('Enter a valid non-negative bankroll.');
+      // set save succeeded to handle the save succeeded
       setSaveSucceeded(false);
       return;
     }
 
     try {
+      // update settings to handle the settings
       await updateSettings({ startingBankroll: bankroll, currency });
+      // set message to handle the message
       setMessage('Settings saved.');
+      // set save succeeded to handle the save succeeded
       setSaveSucceeded(true);
     } catch {
+      // set message to handle the message
       setMessage('Settings could not be saved.');
       setSaveSucceeded(false);
     }
@@ -51,30 +79,45 @@ export default function SettingsScreen() {
       keyboardShouldPersistTaps="handled"
       style={styles.screen}
     >
+      {/* view to handle the view */}
       <View>
+        {/* text to handle the heading */}
         <Text style={styles.heading}>Settings</Text>
+        {/* text to handle the subtitle */}
         <Text style={styles.subtitle}>
           Configure the baseline used for your bankroll stats.
         </Text>
       </View>
 
+      {/* view to handle the card */}
       <View style={styles.card}>
+        {/* text to handle the label */}
         <Text style={styles.label}>Starting bankroll</Text>
+        {/* text input to handle the text input */}
         <TextInput
+          // accessibility label to handle the accessibility label
           accessibilityLabel="Starting bankroll"
           keyboardType="decimal-pad"
+          // on change text to handle the on change text
           onChangeText={setStartingBankroll}
+          // selection color to handle the selection color
           selectionColor={colors.primary}
           style={styles.input}
+          // value to handle the value
           value={startingBankroll}
         />
 
+        {/* text to handle the label */}
         <Text style={styles.label}>Default currency</Text>
+        {/* view to handle the currency row */}
         <View style={styles.currencyRow}>
           {currencies.map((option) => (
             <Pressable
+              // key to handle the key
               key={option}
+              // on press to handle the on press
               onPress={() => setCurrency(option)}
+              // style to handle the style
               style={[
                 styles.currencyButton,
                 option === currency && styles.currencyButtonActive,
@@ -92,18 +135,20 @@ export default function SettingsScreen() {
           ))}
         </View>
 
+        {/* if there is a message, show the message */}
         {message ? (
-          <Text
-            style={[
-              styles.message,
-              saveSucceeded ? styles.successMessage : styles.errorMessage,
-            ]}
-          >
-            {message}
-          </Text>
+          // if there is a message, show the message
+          <View>
+            {/* text to handle the message */}
+            <Text style={[styles.message, saveSucceeded ? styles.successMessage : styles.errorMessage]}>
+              {message}
+            </Text>
+          </View>
         ) : null}
 
+        {/* pressable to handle the pressable */}
         <Pressable
+          // on press to handle the on press
           onPress={handleSave}
           style={({ pressed }) => [
             styles.saveButton,
@@ -114,56 +159,93 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
 
+      {/* view to handle the future card */}
       <View style={styles.futureCard}>
+        {/* text to handle the future label */}
         <Text style={styles.futureLabel}>COMING LATER</Text>
+        {/* text to handle the future title */}
         <Text style={styles.futureTitle}>Blackjack training & simulation</Text>
+        {/* text to handle the future text */}
         <Text style={styles.futureText}>
           Strategy drills and card-counting simulations will live in a separate
           feature area, without changing your tracker data.
         </Text>
-        {/* TODO: Add links to simulation and training modules in a future release. */}
       </View>
     </ScrollView>
   );
 }
 
+/**
+ * Styles for the settings screen
+ * @returns {StyleSheet}
+ * @description This styles are used to style the settings screen.
+ * @example
+ * <SettingsScreen />
+ */
 const styles = StyleSheet.create({
+  // screen to handle the screen style
   screen: {
     backgroundColor: colors.background,
     flex: 1,
   },
+  // content to handle the content style
   content: {
+    // gap to handle the gap
     gap: spacing.lg,
     padding: spacing.md,
+    // padding bottom to handle the padding bottom
     paddingBottom: spacing.xl,
   },
+  // heading to handle the heading style
   heading: {
+    // color to handle the color
     color: colors.text,
+    // font size to handle the font size
     fontSize: 25,
+    // font weight to handle the font weight
     fontWeight: '800',
   },
+  // subtitle to handle the subtitle style
   subtitle: {
+    // color to handle the color
     color: colors.textMuted,
     fontSize: 14,
+    // line height to handle the line height
     lineHeight: 20,
+    // margin top to handle the margin top
     marginTop: spacing.xs,
   },
+  // card to handle the card style
   card: {
+    // background color to handle the background color
     backgroundColor: colors.surface,
+    // border color to handle the border color
     borderColor: colors.border,
+    // border radius to handle the border radius
     borderRadius: radius.md,
+    // border width to handle the border width
     borderWidth: 1,
+    // gap to handle the gap
     gap: spacing.md,
+    // padding to handle the padding
     padding: spacing.md,
   },
+  // label to handle the label style
   label: {
+    // color to handle the color
     color: colors.textMuted,
+    // font size to handle the font size
     fontSize: 13,
+    // font weight to handle the font weight
     fontWeight: '600',
   },
+  // input to handle the input style
   input: {
+    // background color to handle the background color
     backgroundColor: colors.input,
+    // border color to handle the border color
     borderColor: colors.border,
+    // border radius to handle the border radius
     borderRadius: radius.sm,
     borderWidth: 1,
     color: colors.text,
@@ -171,40 +253,60 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: spacing.md,
   },
+  // currency row to handle the currency row style
   currencyRow: {
+    // flex direction to handle the flex direction
     flexDirection: 'row',
+    // flex wrap to handle the flex wrap
     flexWrap: 'wrap',
+    // gap to handle the gap
     gap: spacing.sm,
   },
   currencyButton: {
+    // border color to handle the border color
     borderColor: colors.border,
+    // border radius to handle the border radius
     borderRadius: radius.sm,
+    // border width to handle the border width
     borderWidth: 1,
+    // padding horizontal to handle the padding horizontal
     paddingHorizontal: spacing.md,
+    // padding vertical to handle the padding vertical
     paddingVertical: spacing.sm,
   },
   currencyButtonActive: {
+    // background color to handle the background color
     backgroundColor: colors.primary,
+    // border color to handle the border color
     borderColor: colors.primary,
   },
   currencyText: {
+    // color to handle the color
     color: colors.textMuted,
+    // font weight to handle the font weight
     fontWeight: '700',
   },
+  // currency text active to handle the currency text active style
   currencyTextActive: {
+    // color to handle the color
     color: colors.background,
   },
   message: {
+    // font size to handle the font size
     fontSize: 13,
   },
   successMessage: {
+    // color to handle the color
     color: colors.positive,
   },
   errorMessage: {
+    // color to handle the color
     color: colors.negative,
   },
   saveButton: {
+    // align items to handle the align items
     alignItems: 'center',
+    // background color to handle the background color
     backgroundColor: colors.primary,
     borderRadius: radius.sm,
     minHeight: 50,
