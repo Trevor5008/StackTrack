@@ -3,6 +3,14 @@
 StackTrack is a mobile-first blackjack bankroll and session tracker built with
 Expo, React Native, and TypeScript.
 
+## Table of Contents
+
+- [Run locally](#run-locally)
+- [MVP features](#mvp-features)
+- [Project structure](#project-structure)
+- [Docs](#docs)
+- [Technologies Used](#technologies-used)
+
 ## Run locally
 
 This project targets **Expo SDK 54**, which matches the Expo Go version currently
@@ -10,23 +18,28 @@ on the App Store / Play Store.
 
 ```bash
 npm install
-npx expo start
+npx expo start --lan
 ```
 
 Scan the QR code with Expo Go, or press `a`, `i`, or `w` for an Android,
 iOS, or web target. Keep the phone and computer on the same network when
 possible (hotspot works if client isolation is not blocking device traffic).
 
+After pulling SQLite changes, restart Metro so `metro.config.js` WASM settings
+load (required for web). Web also needs COOP/COEP headers, which the local
+Metro config sets automatically.
+
 ## MVP features
 
-- Local-only session storage with AsyncStorage
+- Local-only session storage with **expo-sqlite**
+- Validated load/save and one-time AsyncStorage → SQLite migration
 - Dashboard with lifetime bankroll statistics
 - Add, view, edit, and delete sessions
 - Configurable starting bankroll and default currency
-- Seed sessions on first launch
+- Optional demo data from Settings (no auto-seed on first launch)
 
 The tracking domain is kept under `src/` so future blackjack simulation and
-training modules can be added independently.
+training modules can be added independently behind the same store API.
 
 ## Project structure
 
@@ -53,12 +66,17 @@ stacktrack/
 │   ├── context/
 │   │   └── SessionContext.tsx    # App state + CRUD actions
 │   ├── data/
-│   │   └── sampleSessions.ts     # First-launch seed data
+│   │   └── sampleSessions.ts     # Optional demo data
 │   ├── lib/
 │   │   ├── format.ts             # Currency / date helpers
 │   │   └── stats.ts              # Derived bankroll stats
 │   ├── storage/
-│   │   └── sessionStore.ts       # AsyncStorage persistence
+│   │   ├── db.ts                 # SQLite open + schema
+│   │   ├── mappers.ts            # Row ↔ domain mapping
+│   │   ├── migrateFromAsyncStorage.ts
+│   │   ├── sessionStore.ts       # Store API (SQLite backend)
+│   │   ├── validators.ts         # Schema validation
+│   │   └── __tests__/            # Storage unit tests
 │   ├── types/
 │   │   └── session.ts            # Session + settings types
 │   └── theme.ts                  # Colors, spacing, radius
@@ -75,3 +93,23 @@ stacktrack/
 
 - [Data schema](docs/schema.md)
 - [App flow](docs/flow.md)
+
+## Technologies Used
+
+[![Expo](https://img.shields.io/badge/Expo-SDK%2054-000000?logo=expo&logoColor=white)](https://expo.dev/)
+[![React Native](https://img.shields.io/badge/React%20Native-0.81-61DAFB?logo=react&logoColor=black)](https://reactnative.dev/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Expo Router](https://img.shields.io/badge/Expo%20Router-6-000000?logo=expo&logoColor=white)](https://docs.expo.dev/router/introduction/)
+[![SQLite](https://img.shields.io/badge/expo--sqlite-16-003B57?logo=sqlite&logoColor=white)](https://docs.expo.dev/versions/latest/sdk/sqlite/)
+[![AsyncStorage](https://img.shields.io/badge/AsyncStorage-migration-3B82F6?logo=react&logoColor=white)](https://react-native-async-storage.github.io/async-storage/)
+[![Jest](https://img.shields.io/badge/Jest-29-C21325?logo=jest&logoColor=white)](https://jestjs.io/)
+
+- **Expo SDK 54** — managed React Native toolchain and Expo Go workflow
+- **React Native / React 19** — mobile UI
+- **TypeScript** — typed app and storage layers
+- **Expo Router** — file-based navigation (`app/`)
+- **expo-sqlite** — local persistence (`stacktrack.db`)
+- **AsyncStorage** — one-time legacy migration into SQLite
+- **Jest + ts-jest** — unit tests for validators and row mappers
+

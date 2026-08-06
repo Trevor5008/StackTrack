@@ -1,21 +1,57 @@
 # StackTrack data schema
 
-StackTrack is local-only for the MVP. Persistence uses AsyncStorage with two
-keys and no remote backend.
+StackTrack is local-only for the MVP. Persistence uses **expo-sqlite**
+(`stacktrack.db`) with validated domain types and no remote backend.
 
-| Key | Value |
+On first launch, sessions start **empty**. Demo data is optional via Settings
+→ **Load demo data**.
+
+A one-time migrator imports legacy AsyncStorage envelopes
+(`@stacktrack/sessions`, `@stacktrack/settings`) into SQLite, then clears those
+keys. `netResult` is normalized to `cashOut - buyIn` during validation.
+
+## SQLite tables
+
+Database file: `stacktrack.db` · schema version: `1` (stored in `meta`)
+
+| Table | Purpose |
 | --- | --- |
-| `@stacktrack/sessions` | `Session[]` JSON |
-| `@stacktrack/settings` | `AppSettings` JSON |
+| `meta` | Key/value flags (`schema_version`, `async_migrated`) |
+| `settings` | Singleton row (`id = 1`) for starting bankroll + currency |
+| `sessions` | One row per blackjack sitting |
 
-On first launch, if no sessions exist, seed data from `src/data/sampleSessions.ts`
-is written to storage.
+### sessions
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | TEXT PK | Client-generated |
+| `date` | TEXT | `YYYY-MM-DD` |
+| `location` | TEXT | Casino / location |
+| `starting_bankroll` | REAL | Bankroll before session |
+| `buy_in` | REAL | Buy-in amount |
+| `cash_out` | REAL | Cash-out amount |
+| `hours_played` | REAL | Hours at the table |
+| `net_result` | REAL | `cash_out - buy_in` |
+| `notes` | TEXT | Optional |
+| `created_at` | TEXT | ISO timestamp |
+| `updated_at` | TEXT | ISO timestamp |
+
+Index: `idx_sessions_date` on `(date DESC, created_at DESC)`.
+
+### settings
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | INTEGER PK | Always `1` |
+| `starting_bankroll` | REAL | Default `5000` |
+| `currency` | TEXT | Default `USD` |
 
 ## Entities
 
 ### Session
 
-Primary record for one blackjack sitting.
+Primary record for one blackjack sitting (TypeScript shape in
+`src/types/session.ts`).
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -40,8 +76,6 @@ Omit<Session, 'id' | 'netResult' | 'createdAt' | 'updatedAt'>
 `id`, `netResult`, `createdAt`, and `updatedAt` are owned by `SessionContext`.
 
 ### AppSettings
-
-Global profile values that feed bankroll math.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
@@ -104,20 +138,21 @@ erDiagram
 ```
 
 `AppSettings` is not a foreign key relationship. Sessions do not store a
-settings id; the settings document is a singleton used when deriving current
-bankroll and formatting money.
+settings id; settings is a singleton row used when deriving current bankroll
+and formatting money.
 
 ## Storage layout
 
 ```mermaid
 flowchart LR
-  subgraph AsyncStorage
-    S["@stacktrack/sessions\nSession[]"]
-    P["@stacktrack/settings\nAppSettings"]
+  subgraph SQLite["stacktrack.db"]
+    Meta[meta]
+    SettingsTbl[settings]
+    SessionsTbl[sessions]
   end
 
-  Store[sessionStore.ts] --> S
-  Store --> P
+  Store["sessionStore + validators"] --> SQLite
+  Store -.->|"one-time import"| Legacy[AsyncStorage legacy keys]
   Context[SessionContext] --> Store
   Screens[App screens] --> Context
   Stats[stats.ts] --> Context
@@ -128,6 +163,5 @@ flowchart LR
 Keep simulation/training data out of the session tracker schema. Suggested
 later additions without rewriting the MVP model:
 
-- `SimulationRun` linked loosely by date/bankroll snapshot
-- `TrainingDrill` results stored under separate AsyncStorage keys
-- Optional cloud sync by adding a remote repository behind `sessionStore`
+- `SimulationRun` / `TrainingDrill` tables behind `meta.schema_version` bumps
+- Optional cloud sync behind the same `sessionStore` API

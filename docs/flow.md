@@ -26,19 +26,20 @@ sequenceDiagram
   participant App as Root layout
   participant Ctx as SessionContext
   participant Store as sessionStore
-  participant AS as AsyncStorage
+  participant DB as expo-sqlite
+  participant AS as AsyncStorage legacy
 
   App->>Ctx: mount SessionProvider
   Ctx->>Store: loadSessions() + loadSettings()
-  Store->>AS: getItem(@stacktrack/sessions)
-  alt no sessions saved
-    Store->>AS: setItem(sampleSessions)
-    Store-->>Ctx: sampleSessions
-  else sessions exist
-    Store-->>Ctx: stored Session[]
+  Store->>DB: open stacktrack.db + ensure schema
+  Store->>DB: check meta.async_migrated
+  alt not migrated yet
+    Store->>AS: read legacy envelopes
+    Store->>DB: import validated rows
+    Store->>AS: remove legacy keys
   end
-  Store->>AS: getItem(@stacktrack/settings)
-  Store-->>Ctx: AppSettings (or defaults)
+  Store->>DB: SELECT sessions / settings
+  Store-->>Ctx: Session[] + AppSettings
   Ctx-->>App: isLoading = false
   App-->>App: render tabs
 ```
@@ -96,7 +97,7 @@ flowchart TB
   Lib[src/lib/stats + format]
   Types[src/types/session]
   Persist[src/storage/sessionStore]
-  Device[AsyncStorage]
+  Device[expo-sqlite]
 
   UI --> Ctx
   UI --> Lib

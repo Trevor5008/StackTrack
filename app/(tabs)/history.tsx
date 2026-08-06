@@ -26,7 +26,7 @@ export default function HistoryScreen() {
           <Text style={styles.emptyTitle}>No sessions yet</Text>
           {/* text to handle the empty text */}
           <Text style={styles.emptyText}>
-            Use Add Session to start tracking your play.
+            Use Add Session to start tracking, or load demo data from Settings.
           </Text>
         </View>}
       // content container style to handle the content container style
