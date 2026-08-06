@@ -6,14 +6,14 @@ High-level navigation and data flow for the MVP.
 
 ```mermaid
 flowchart TD
-  Root[app/_layout.tsx\nSessionProvider] --> Tabs[tabs]
+  Root["app/_layout.tsx<br/>SessionProvider"] --> Tabs[tabs]
 
-  Tabs --> Dashboard[Dashboard\n(tabs)/index]
-  Tabs --> Add[Add Session\n(tabs)/add-session]
-  Tabs --> History[History\n(tabs)/history]
-  Tabs --> Settings[Settings\n(tabs)/settings]
+  Tabs --> Dashboard["Dashboard<br/>(tabs)/index"]
+  Tabs --> Add["Add Session<br/>(tabs)/add-session"]
+  Tabs --> History["History<br/>(tabs)/history"]
+  Tabs --> Settings["Settings<br/>(tabs)/settings"]
 
-  Dashboard --> Detail[Session Detail\nsession/id]
+  Dashboard --> Detail["Session Detail<br/>session/id"]
   History --> Detail
   Detail --> Edit[Inline edit via SessionForm]
   Detail --> Delete[Confirm delete]
@@ -48,13 +48,13 @@ sequenceDiagram
 ```mermaid
 flowchart LR
   A[Add Session screen] --> B[SessionForm]
-  B --> C{Validate date,\nlocation, amounts}
+  B --> C{"Validate date<br/>location, amounts"}
   C -->|invalid| B
   C -->|valid| D[SessionContext.addSession]
-  D --> E[Compute netResult\ncashOut - buyIn]
-  E --> F[Persist Session[]\nvia sessionStore]
+  D --> E["Compute netResult<br/>cashOut - buyIn"]
+  E --> F["Persist Session[]<br/>via sessionStore"]
   F --> G[Navigate to History]
-  F --> H[Dashboard stats refresh\non next focus/render]
+  F --> H["Dashboard stats refresh<br/>on next focus/render"]
 ```
 
 ## Edit / delete flow
@@ -77,8 +77,8 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-  Settings[AppSettings.startingBankroll] --> Stats[src/lib/stats.ts]
-  Sessions[Session[]] --> Stats
+  Settings[AppSettings.startingBankroll] --> Stats["src/lib/stats.ts"]
+  Sessions["Session[]"] --> Stats
   Stats --> Cards[StatCard values]
   Stats --> Trend[BankrollTrend]
   Sessions --> List[SessionListItem]
