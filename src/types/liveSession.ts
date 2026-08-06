@@ -22,7 +22,7 @@ export type ActiveTable = {
   netResult: number;
   /** Placeholder for future house-edge ordinal ranking. */
   rankPlaceholder: number | null;
-  /** JSON stub for upcoming table rules modal. */
+  /** JSON-serialized TableRules (see src/types/tableRules.ts). */
   rulesJson: string | null;
   createdAt: string;
   updatedAt: string;

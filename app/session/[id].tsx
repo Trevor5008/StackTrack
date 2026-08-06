@@ -16,6 +16,7 @@ import { SessionForm } from '@/src/components/SessionForm';
 import { useSessions } from '@/src/context/SessionContext';
 import { confirmAction } from '@/src/lib/confirm';
 import { formatCurrency, formatDate, formatHours } from '@/src/lib/format';
+import { formatTableRulesSummary, parseTableRules } from '@/src/lib/tableRules';
 import { loadSessionTables } from '@/src/storage/liveSessionStore';
 import { SessionTable } from '@/src/types/liveSession';
 import { colors, radius, spacing } from '@/src/theme';
@@ -29,6 +30,7 @@ export default function SessionDetailScreen() {
   const [tablesLoading, setTablesLoading] = useState(true);
   const session = sessions.find((item) => item.id === params.id);
 
+  // Load the session tables
   useEffect(() => {
     if (!params.id) {
       setTables([]);
@@ -42,6 +44,7 @@ export default function SessionDetailScreen() {
       .finally(() => setTablesLoading(false));
   }, [params.id]);
 
+  // Render loading indicator
   if (isLoading) {
     return (
       <View style={styles.centered}>
@@ -50,6 +53,7 @@ export default function SessionDetailScreen() {
     );
   }
 
+  // Render not found
   if (!session) {
     return (
       <View style={styles.centered}>
@@ -61,6 +65,7 @@ export default function SessionDetailScreen() {
     );
   }
 
+  // Confirm delete session
   const confirmDelete = () => {
     confirmAction(
       {
@@ -76,6 +81,7 @@ export default function SessionDetailScreen() {
     );
   };
 
+  // Render edit session
   if (editing) {
     return (
       <KeyboardAvoidingView
@@ -151,6 +157,7 @@ export default function SessionDetailScreen() {
 
       <View style={styles.tablesSection}>
         <Text style={styles.sectionTitle}>Tables</Text>
+        {/* Render loading indicator */}
         {tablesLoading ? (
           <ActivityIndicator color={colors.primary} />
         ) : tables.length === 0 ? (
@@ -159,27 +166,35 @@ export default function SessionDetailScreen() {
           </Text>
         ) : (
           <View style={styles.tableList}>
-            {tables.map((table) => (
-              <View key={table.id} style={styles.tableRow}>
-                <RankBadge rank={table.rankPlaceholder} />
-                <View style={styles.tableMain}>
-                  <Text style={styles.tableName}>{table.name}</Text>
+            {tables.map((table) => {
+              const rules = parseTableRules(table.rulesJson);
+              return (
+                <View key={table.id} style={styles.tableRow}>
+                  <RankBadge rank={table.rankPlaceholder} />
+                  <View style={styles.tableMain}>
+                    <Text style={styles.tableName}>{table.name}</Text>
+                    <Text style={styles.tableRules}>
+                      {rules
+                        ? formatTableRulesSummary(rules)
+                        : 'No rules set'}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.tablePnL,
+                      {
+                        color:
+                          table.netResult >= 0
+                            ? colors.positive
+                            : colors.negative,
+                      },
+                    ]}
+                  >
+                    {formatCurrency(table.netResult, settings.currency, true)}
+                  </Text>
                 </View>
-                <Text
-                  style={[
-                    styles.tablePnL,
-                    {
-                      color:
-                        table.netResult >= 0
-                          ? colors.positive
-                          : colors.negative,
-                    },
-                  ]}
-                >
-                  {formatCurrency(table.netResult, settings.currency, true)}
-                </Text>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
       </View>
@@ -343,6 +358,11 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 16,
     fontWeight: '700',
+  },
+  tableRules: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 2,
   },
   tablePnL: {
     fontSize: 15,

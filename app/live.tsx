@@ -2,7 +2,6 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -16,12 +15,20 @@ import {
 
 // Live session screen component
 import { RankBadge } from '@/src/components/RankBadge';
+import { TableRulesForm } from '@/src/components/TableRulesForm';
 import { useLiveSession } from '@/src/context/LiveSessionContext';
 import { useSessions } from '@/src/context/SessionContext';
 import { confirmAction } from '@/src/lib/confirm';
 import { formatCurrency } from '@/src/lib/format';
 import { formatElapsed } from '@/src/lib/liveTimer';
+import {
+  defaultTableRules,
+  formatTableRulesSummary,
+  parseTableRules,
+  serializeTableRules,
+} from '@/src/lib/tableRules';
 import { colors, radius, spacing } from '@/src/theme';
+import { TableRules } from '@/src/types/tableRules';
 
 // Live session screen component
 export default function LiveSessionScreen() {
@@ -47,6 +54,8 @@ export default function LiveSessionScreen() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [editingTableId, setEditingTableId] = useState<string | null>(null);
+  const [rulesTableId, setRulesTableId] = useState<string | null>(null);
+  const [savingRules, setSavingRules] = useState(false);
 
   const currency = settings.currency;
 
@@ -89,9 +98,17 @@ export default function LiveSessionScreen() {
     setEnding(true);
   };
 
-  // Show the rules stub modal
-  const onRulesStub = () => {
-    Alert.alert('Coming soon', 'Table rules editor is coming soon.');
+  const onSaveRules = async (rules: TableRules) => {
+    if (!rulesTableId) return;
+    setSavingRules(true);
+    try {
+      await updateTable(rulesTableId, {
+        rulesJson: serializeTableRules(rules),
+      });
+      setRulesTableId(null);
+    } finally {
+      setSavingRules(false);
+    }
   };
 
   // Discard the live session
@@ -278,14 +295,19 @@ export default function LiveSessionScreen() {
                         placeholderTextColor={colors.textMuted}
                       />
                       <Pressable
-                        onPress={onRulesStub}
+                        onPress={() => setRulesTableId(table.id)}
                         style={({ pressed }) => [
                           styles.rulesButton,
                           pressed && styles.pressed,
                         ]}
                       >
                         <Text style={styles.rulesButtonText}>
-                          Table rules (coming soon)
+                          {(() => {
+                            const parsed = parseTableRules(table.rulesJson);
+                            return parsed
+                              ? formatTableRulesSummary(parsed)
+                              : 'Set table rules';
+                          })()}
                         </Text>
                       </Pressable>
                     </View>
@@ -363,6 +385,34 @@ export default function LiveSessionScreen() {
                 </Text>
               </Pressable>
             </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        visible={rulesTableId != null}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setRulesTableId(null)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalBackdrop}
+        >
+          <View style={styles.modalCard}>
+            {rulesTableId ? (
+              <TableRulesForm
+                key={rulesTableId}
+                initialRules={
+                  parseTableRules(
+                    tables.find((t) => t.id === rulesTableId)?.rulesJson,
+                  ) ?? defaultTableRules()
+                }
+                onCancel={() => setRulesTableId(null)}
+                onSave={onSaveRules}
+                saving={savingRules}
+              />
+            ) : null}
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -572,6 +622,7 @@ const styles = StyleSheet.create({
   rulesButtonText: {
     color: colors.textMuted,
     fontWeight: '600',
+    textAlign: 'center',
   },
   discardLink: {
     alignItems: 'center',

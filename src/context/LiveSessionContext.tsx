@@ -45,7 +45,7 @@ type LiveSessionContextValue = {
   addTable: (input?: AddTableInput) => Promise<ActiveTable>;
   updateTable: (
     id: string,
-    patch: Partial<Pick<ActiveTable, 'name' | 'netResult'>>,
+    patch: Partial<Pick<ActiveTable, 'name' | 'netResult' | 'rulesJson'>>,
   ) => Promise<void>;
   endSession: (input: EndLiveSessionInput) => Promise<Session>;
   discardSession: () => Promise<void>;
@@ -183,7 +183,7 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
   const updateTable = useCallback(
     async (
       id: string,
-      patch: Partial<Pick<ActiveTable, 'name' | 'netResult'>>,
+      patch: Partial<Pick<ActiveTable, 'name' | 'netResult' | 'rulesJson'>>,
     ) => {
       const current = tables.find((table) => table.id === id);
       if (!current) return;

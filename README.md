@@ -36,12 +36,12 @@ After pulling SQLite changes, restart Metro so `metro.config.js`
 - Validated load/save and one-time AsyncStorage → SQLite migration
 - Dashboard with lifetime bankroll statistics
 - **Live session shell**: start / pause / resume / end with persistent timer
-- Addable table cards (placeholder rank badges; rules modal stub)
+- Addable table cards with editable table rules (decks, payout, S17/H17, DAS, LS)
 - Add, view, edit, and delete completed sessions (with tables overview)
 - Configurable starting bankroll and default currency
 - Optional demo data from Settings (no auto-seed on first launch)
 
-> Upcoming: table rules editor → house-edge math → ordinal color ranking.
+> Upcoming: house-edge math → ordinal color ranking on RankBadge.
 
 The tracking domain is kept under `src/` so future blackjack simulation and
 training modules can be added independently behind the same store API.
@@ -69,7 +69,8 @@ stacktrack/
 │   │   ├── RankBadge.tsx
 │   │   ├── SessionForm.tsx
 │   │   ├── SessionListItem.tsx
-│   │   └── StatCard.tsx
+│   │   ├── StatCard.tsx
+│   │   └── TableRulesForm.tsx
 │   ├── context/
 │   │   ├── LiveSessionContext.tsx
 │   │   └── SessionContext.tsx    # App state + CRUD actions
@@ -78,6 +79,7 @@ stacktrack/
 │   ├── lib/
 │   │   ├── format.ts             # Currency / date helpers
 │   │   ├── liveTimer.ts          # Live session elapsed helpers
+│   │   ├── tableRules.ts         # Parse / serialize table rules
 │   │   └── stats.ts              # Derived bankroll stats
 │   ├── storage/
 │   │   ├── db.ts                 # SQLite open + schema
@@ -89,7 +91,8 @@ stacktrack/
 │   │   └── __tests__/            # Storage unit tests
 │   ├── types/
 │   │   ├── liveSession.ts        # Live session + table types
-│   │   └── session.ts            # Session + settings types
+│   │   ├── session.ts            # Session + settings types
+│   │   └── tableRules.ts         # Blackjack table rules shape
 │   └── theme.ts                  # Colors, spacing, radius
 ├── docs/
 │   ├── schema.md                 # Data model

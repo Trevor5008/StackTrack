@@ -72,7 +72,7 @@ On resume, `segment_started_at` is set to now and pause clears.
 | `sort_order` | INTEGER | List order |
 | `net_result` | REAL | Manual / default `0` |
 | `rank_placeholder` | INTEGER | Nullable; ranking comes later |
-| `rules_json` | TEXT | Nullable stub for rules modal |
+| `rules_json` | TEXT | Nullable JSON `TableRules` (see below) |
 | `created_at` | TEXT | ISO timestamp |
 | `updated_at` | TEXT | ISO timestamp |
 
@@ -88,8 +88,22 @@ Snapshot of live tables when a session is ended and saved.
 | `sort_order` | INTEGER | List order |
 | `net_result` | REAL | Table P/L |
 | `rank_placeholder` | INTEGER | Nullable placeholder |
-| `rules_json` | TEXT | Nullable stub |
+| `rules_json` | TEXT | Nullable JSON `TableRules` snapshot |
 | `created_at` | TEXT | ISO timestamp |
+
+`rules_json` shape (`src/types/tableRules.ts`):
+
+```ts
+{
+  decks: 1 | 2 | 4 | 6 | 8;
+  blackjackPayout: '3:2' | '6:5';
+  dealer17: 'S17' | 'H17';
+  doubleAfterSplit: boolean;
+  lateSurrender: boolean;
+}
+```
+
+Defaults when opening the editor with no saved rules: 6 decks, 3:2, S17, DAS yes, late surrender no. Invalid JSON is treated as unset.
 
 ### settings
 
@@ -175,6 +189,8 @@ erDiagram
   AppSettings ||--o{ Session : "baseline for bankroll"
   ActiveSession ||--o{ ActiveTable : "has"
   Session ||--o{ SessionTable : "snapshot"
+  ActiveTable ||--o| TableRules : "rules_json"
+  SessionTable ||--o| TableRules : "rules_json snapshot"
   Session {
     string id PK
     string date
@@ -200,12 +216,21 @@ erDiagram
     string activeSessionId FK
     string name
     number netResult
+    string rulesJson
   }
   SessionTable {
     string id PK
     string sessionId FK
     string name
     number netResult
+    string rulesJson
+  }
+  TableRules {
+    number decks
+    string blackjackPayout
+    string dealer17
+    boolean doubleAfterSplit
+    boolean lateSurrender
   }
   AppSettings {
     number startingBankroll
@@ -218,6 +243,9 @@ erDiagram
   }
   Session ||--o| WinLossRecord : "aggregates into"
 ```
+
+`TableRules` is not a separate SQLite table — it is JSON stored in
+`active_tables.rules_json` / `session_tables.rules_json`.
 
 `AppSettings` is not a foreign key relationship. Sessions do not store a
 settings id; settings is a singleton row used when deriving current bankroll
@@ -232,16 +260,18 @@ flowchart LR
     SettingsTbl[settings]
     SessionsTbl[sessions]
     ActiveSessions[active_sessions]
-    ActiveTables[active_tables]
-    SessionTables[session_tables]
+    ActiveTables["active_tables<br/>rules_json"]
+    SessionTables["session_tables<br/>rules_json"]
   end
 
   Store["sessionStore + liveSessionStore"] --> SQLite
+  RulesLib["tableRules.ts<br/>parse serialize"] --> Store
   Store -.->|"one-time import"| Legacy[AsyncStorage legacy keys]
   SessionCtx[SessionContext] --> Store
   LiveCtx[LiveSessionContext] --> Store
   Screens[App screens] --> SessionCtx
   Screens --> LiveCtx
+  Screens --> RulesLib
   Stats[stats.ts] --> SessionCtx
 ```
 
@@ -250,6 +280,6 @@ flowchart LR
 Keep simulation/training data out of the session tracker schema. Suggested
 later additions without rewriting the MVP model:
 
-- Table rules modal → house-edge math → color ordinal ranking on `RankBadge`
+- Table rules editor (done) → house-edge math → color ordinal ranking on `RankBadge`
 - `SimulationRun` / `TrainingDrill` tables behind `meta.schema_version` bumps
 - Optional cloud sync behind the same `sessionStore` API

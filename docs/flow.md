@@ -60,11 +60,34 @@ flowchart TD
   Persist --> Dashboard
   Dashboard -->|Tap history item| Detail[Session Detail]
   Detail --> TableOverview[Tables overview]
-  Tables -.->|stub| RulesModal[Rules modal later]
+  Tables -->|Edit rules| RulesModal[TableRulesForm]
+  RulesModal -->|Save rules_json| Tables
+  TableOverview -->|Read-only summary| RulesSummary[formatTableRulesSummary]
 ```
 
 Timer state is persisted in `active_sessions`. On end, `hoursPlayed` comes from
 elapsed ms; active rows are cleared after `session_tables` are copied.
+
+## Table rules flow
+
+```mermaid
+sequenceDiagram
+  participant Live as live.tsx
+  participant Form as TableRulesForm
+  participant Ctx as LiveSessionContext
+  participant Lib as tableRules.ts
+  participant Store as liveSessionStore
+  participant DB as expo-sqlite
+
+  Live->>Form: open sheet with parse or defaults
+  Form->>Live: onSave TableRules
+  Live->>Lib: serializeTableRules
+  Live->>Ctx: updateTable rulesJson
+  Ctx->>Store: updateActiveTable
+  Store->>DB: UPDATE active_tables.rules_json
+  Note over Live,DB: End session copies rules_json into session_tables
+  Live->>DB: session detail reads snapshot read-only
+```
 
 ## Add session flow
 
@@ -114,10 +137,10 @@ context and recalculates on each render.
 
 ```mermaid
 flowchart TB
-  UI[app screens + src/components]
+  UI["app screens + TableRulesForm"]
   Ctx[SessionContext + LiveSessionContext]
-  Lib[src/lib/stats + format + liveTimer]
-  Types[src/types/session + liveSession]
+  Lib[src/lib/stats + format + liveTimer + tableRules]
+  Types[src/types/session + liveSession + tableRules]
   Persist[sessionStore + liveSessionStore]
   Device[expo-sqlite]
 
