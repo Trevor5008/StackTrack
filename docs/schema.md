@@ -12,13 +12,16 @@ keys. `netResult` is normalized to `cashOut - buyIn` during validation.
 
 ## SQLite tables
 
-Database file: `stacktrack.db` · schema version: `1` (stored in `meta`)
+Database file: `stacktrack.db` · schema version: `2` (stored in `meta`)
 
 | Table | Purpose |
 | --- | --- |
 | `meta` | Key/value flags (`schema_version`, `async_migrated`) |
 | `settings` | Singleton row (`id = 1`) for starting bankroll + currency |
-| `sessions` | One row per blackjack sitting |
+| `sessions` | One row per completed blackjack sitting |
+| `active_sessions` | At most one in-progress live session |
+| `active_tables` | Tables for the in-progress live session |
+| `session_tables` | Per-table snapshot copied onto completed sessions |
 
 ### sessions
 
@@ -37,6 +40,56 @@ Database file: `stacktrack.db` · schema version: `1` (stored in `meta`)
 | `updated_at` | TEXT | ISO timestamp |
 
 Index: `idx_sessions_date` on `(date DESC, created_at DESC)`.
+
+### active_sessions
+
+At most one row. Timer fields persist so app reload recovers the live session.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | TEXT PK | Client-generated |
+| `location` | TEXT | Optional until end; may be empty while live |
+| `starting_bankroll` | REAL | Bankroll when the live session started |
+| `buy_in` | REAL | Nullable until end form |
+| `segment_started_at` | TEXT | ISO start of the current running segment |
+| `accumulated_ms` | INTEGER | Frozen elapsed while paused / prior segments |
+| `is_paused` | INTEGER | `0` / `1` |
+| `paused_at` | TEXT | Nullable ISO timestamp |
+| `created_at` | TEXT | ISO timestamp |
+| `updated_at` | TEXT | ISO timestamp |
+
+Elapsed while running = `accumulated_ms + (now - segment_started_at)`.
+On pause, that sum is written into `accumulated_ms` and `is_paused = 1`.
+On resume, `segment_started_at` is set to now and pause clears.
+
+### active_tables
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | TEXT PK | Client-generated |
+| `active_session_id` | TEXT FK | → `active_sessions.id` |
+| `name` | TEXT | Display name |
+| `sort_order` | INTEGER | List order |
+| `net_result` | REAL | Manual / default `0` |
+| `rank_placeholder` | INTEGER | Nullable; ranking comes later |
+| `rules_json` | TEXT | Nullable stub for rules modal |
+| `created_at` | TEXT | ISO timestamp |
+| `updated_at` | TEXT | ISO timestamp |
+
+### session_tables
+
+Snapshot of live tables when a session is ended and saved.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | TEXT PK | Client-generated |
+| `session_id` | TEXT FK | → `sessions.id` |
+| `name` | TEXT | Display name |
+| `sort_order` | INTEGER | List order |
+| `net_result` | REAL | Table P/L |
+| `rank_placeholder` | INTEGER | Nullable placeholder |
+| `rules_json` | TEXT | Nullable stub |
+| `created_at` | TEXT | ISO timestamp |
 
 ### settings
 
@@ -92,6 +145,14 @@ Derived stats shape (not persisted).
 | `losses` | `number` | `netResult < 0` |
 | `pushes` | `number` | `netResult === 0` |
 
+### ActiveSession / ActiveTable / SessionTable
+
+TypeScript shapes live in `src/types/liveSession.ts`. Managed by
+`liveSessionStore` + `LiveSessionContext`. Completing a live session calls
+`SessionContext.addSession`, copies tables into `session_tables`, then clears
+`active_*` rows. `hoursPlayed` is derived from the timer
+(`round(elapsedMs / 3_600_000, 2)`, floored to at least `0.01`).
+
 ## Derived stats
 
 Computed in `src/lib/stats.ts` from settings + sessions:
@@ -112,6 +173,8 @@ Computed in `src/lib/stats.ts` from settings + sessions:
 ```mermaid
 erDiagram
   AppSettings ||--o{ Session : "baseline for bankroll"
+  ActiveSession ||--o{ ActiveTable : "has"
+  Session ||--o{ SessionTable : "snapshot"
   Session {
     string id PK
     string date
@@ -124,6 +187,25 @@ erDiagram
     string notes
     string createdAt
     string updatedAt
+  }
+  ActiveSession {
+    string id PK
+    string location
+    number startingBankroll
+    number accumulatedMs
+    boolean isPaused
+  }
+  ActiveTable {
+    string id PK
+    string activeSessionId FK
+    string name
+    number netResult
+  }
+  SessionTable {
+    string id PK
+    string sessionId FK
+    string name
+    number netResult
   }
   AppSettings {
     number startingBankroll
@@ -149,13 +231,18 @@ flowchart LR
     Meta[meta]
     SettingsTbl[settings]
     SessionsTbl[sessions]
+    ActiveSessions[active_sessions]
+    ActiveTables[active_tables]
+    SessionTables[session_tables]
   end
 
-  Store["sessionStore + validators"] --> SQLite
+  Store["sessionStore + liveSessionStore"] --> SQLite
   Store -.->|"one-time import"| Legacy[AsyncStorage legacy keys]
-  Context[SessionContext] --> Store
-  Screens[App screens] --> Context
-  Stats[stats.ts] --> Context
+  SessionCtx[SessionContext] --> Store
+  LiveCtx[LiveSessionContext] --> Store
+  Screens[App screens] --> SessionCtx
+  Screens --> LiveCtx
+  Stats[stats.ts] --> SessionCtx
 ```
 
 ## Future extension points
@@ -163,5 +250,6 @@ flowchart LR
 Keep simulation/training data out of the session tracker schema. Suggested
 later additions without rewriting the MVP model:
 
+- Table rules modal → house-edge math → color ordinal ranking on `RankBadge`
 - `SimulationRun` / `TrainingDrill` tables behind `meta.schema_version` bumps
 - Optional cloud sync behind the same `sessionStore` API

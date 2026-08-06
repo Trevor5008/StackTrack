@@ -11,19 +11,20 @@ import {
 import { BankrollTrend } from '@/src/components/BankrollTrend';
 import { SessionListItem } from '@/src/components/SessionListItem';
 import { StatCard } from '@/src/components/StatCard';
+import { useLiveSession } from '@/src/context/LiveSessionContext';
 import { useSessions } from '@/src/context/SessionContext';
-import { formatCurrency, formatHours } from '@/src/lib/format';
+import { formatCurrency } from '@/src/lib/format';
+import { formatElapsed } from '@/src/lib/liveTimer';
 import {
   biggestLoss,
   biggestWin,
   currentBankroll,
   hourlyRate,
   lifetimeProfitLoss,
-  totalHours,
   totalSessions,
   winLossRecord,
 } from '@/src/lib/stats';
-import { colors, spacing } from '@/src/theme';
+import { colors, radius, spacing } from '@/src/theme';
 
 /**
  * Dashboard screen
@@ -34,9 +35,14 @@ import { colors, spacing } from '@/src/theme';
  */
 export default function DashboardScreen() {
   const { sessions, settings, isLoading, error } = useSessions();
+  const {
+    activeSession,
+    elapsedMs,
+    isLoading: liveLoading,
+    startSession,
+  } = useLiveSession();
 
-  // return the dashboard screen
-  if (isLoading) {
+  if (isLoading || liveLoading) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator color={colors.primary} size="large" />
@@ -44,30 +50,58 @@ export default function DashboardScreen() {
     );
   }
 
-  // profit loss to handle the profit loss
   const profitLoss = lifetimeProfitLoss(sessions);
-  // record to handle the record
   const record = winLossRecord(sessions);
-  // currency to handle the currency
   const currency = settings.currency;
 
+  const onStartLive = async () => {
+    await startSession({
+      startingBankroll: currentBankroll(settings.startingBankroll, sessions),
+    });
+    router.push('/live');
+  };
+
   return (
-    // scroll view to handle the scrollable content
     <ScrollView
       contentContainerStyle={styles.content}
       style={styles.screen}
       showsVerticalScrollIndicator={false}
     >
-      {/* view to handle the view */}
       <View>
-        {/* text to handle the eyebrow */}
         <Text style={styles.eyebrow}>STACKTRACK</Text>
-        {/* text to handle the heading */}
         <Text style={styles.heading}>Your bankroll at a glance</Text>
       </View>
 
-      {/* error to handle the error */}
       {error ? <Text style={styles.error}>{error}</Text> : null}
+
+      {activeSession ? (
+        <Pressable
+          onPress={() => router.push('/live')}
+          style={({ pressed }) => [
+            styles.liveBanner,
+            pressed && styles.pressed,
+          ]}
+        >
+          <View>
+            <Text style={styles.liveEyebrow}>SESSION IN PROGRESS</Text>
+            <Text style={styles.liveTimer}>{formatElapsed(elapsedMs)}</Text>
+            <Text style={styles.liveHint}>
+              {activeSession.isPaused ? 'Paused — tap to continue' : 'Tap to continue'}
+            </Text>
+          </View>
+          <Text style={styles.liveCta}>Open</Text>
+        </Pressable>
+      ) : (
+        <Pressable
+          onPress={() => void onStartLive()}
+          style={({ pressed }) => [
+            styles.startButton,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={styles.startButtonText}>Start live session</Text>
+        </Pressable>
+      )}
 
       {/* view to handle the stats grid */}
       <View style={styles.statsGrid}>
@@ -237,5 +271,51 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     paddingVertical: spacing.lg,
     textAlign: 'center',
+  },
+  startButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    minHeight: 52,
+    justifyContent: 'center',
+  },
+  startButtonText: {
+    color: colors.background,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  liveBanner: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.primary,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+  },
+  liveEyebrow: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+  },
+  liveTimer: {
+    color: colors.text,
+    fontSize: 28,
+    fontWeight: '800',
+    marginTop: spacing.xs,
+  },
+  liveHint: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  liveCta: {
+    color: colors.primary,
+    fontWeight: '800',
+  },
+  pressed: {
+    opacity: 0.8,
   },
 });

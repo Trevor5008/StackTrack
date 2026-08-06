@@ -1,14 +1,10 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import * as SQLite from 'expo-sqlite';
 
-// Name of the database
 export const DATABASE_NAME = 'stacktrack.db';
-// Version of the schema
-export const SCHEMA_VERSION = 1;
-// Schema for the database
+export const SCHEMA_VERSION = 2;
 
-// SQL schema for the database
-const SCHEMA_SQL = `
+const SCHEMA_V1_SQL = `
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY NOT NULL,
   value TEXT NOT NULL
@@ -34,12 +30,51 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date DESC, created_at DESC);
 `;
 
-// Promise for the database
+const SCHEMA_V2_SQL = `
+CREATE TABLE IF NOT EXISTS active_sessions (
+  id TEXT PRIMARY KEY NOT NULL,
+  location TEXT NOT NULL,
+  starting_bankroll REAL NOT NULL,
+  buy_in REAL,
+  segment_started_at TEXT NOT NULL,
+  accumulated_ms INTEGER NOT NULL,
+  is_paused INTEGER NOT NULL,
+  paused_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS active_tables (
+  id TEXT PRIMARY KEY NOT NULL,
+  active_session_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  sort_order INTEGER NOT NULL,
+  net_result REAL NOT NULL,
+  rank_placeholder INTEGER,
+  rules_json TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (active_session_id) REFERENCES active_sessions(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS session_tables (
+  id TEXT PRIMARY KEY NOT NULL,
+  session_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  sort_order INTEGER NOT NULL,
+  net_result REAL NOT NULL,
+  rank_placeholder INTEGER,
+  rules_json TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_active_tables_session
+  ON active_tables(active_session_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_session_tables_session
+  ON session_tables(session_id, sort_order);
+`;
+
 let dbPromise: Promise<SQLiteDatabase> | null = null;
-// Flag to check if the schema is ready
 let schemaReady = false;
 
-// Function to get the database
 export async function getDb(): Promise<SQLiteDatabase> {
   if (!dbPromise) {
     dbPromise = SQLite.openDatabaseAsync(DATABASE_NAME);
@@ -51,7 +86,13 @@ export async function getDb(): Promise<SQLiteDatabase> {
     } catch {
       // WAL is unsupported on some web/sqlite builds.
     }
-    await db.execAsync(SCHEMA_SQL);
+    try {
+      await db.execAsync('PRAGMA foreign_keys = ON;');
+    } catch {
+      // ignore
+    }
+    await db.execAsync(SCHEMA_V1_SQL);
+    await db.execAsync(SCHEMA_V2_SQL);
     const version = await getMeta(db, 'schema_version');
     if (version !== String(SCHEMA_VERSION)) {
       await setMeta(db, 'schema_version', String(SCHEMA_VERSION));
@@ -61,7 +102,6 @@ export async function getDb(): Promise<SQLiteDatabase> {
   return db;
 }
 
-// Function to get the meta data
 export async function getMeta(
   db: SQLiteDatabase,
   key: string,
@@ -73,7 +113,6 @@ export async function getMeta(
   return row?.value ?? null;
 }
 
-// Function to set the meta data
 export async function setMeta(
   db: SQLiteDatabase,
   key: string,
@@ -86,7 +125,6 @@ export async function setMeta(
   );
 }
 
-// Function to reset the database singleton for tests
 export function resetDbSingletonForTests(): void {
   dbPromise = null;
   schemaReady = false;

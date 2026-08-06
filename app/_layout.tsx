@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 
+import { LiveSessionProvider } from '@/src/context/LiveSessionContext';
 import { SessionProvider } from '@/src/context/SessionContext';
 import { colors } from '@/src/theme';
 
@@ -56,37 +57,41 @@ function RootLayoutNav() {
   return (
     // session provider to handle the session provider
     <SessionProvider>
-      <ThemeProvider
-        // value to handle the value
-        value={{
-          ...DarkTheme,
-          // colors to handle the colors
-          colors: {
-            ...DarkTheme.colors,
-            background: colors.background,
-            card: colors.surface,
-            border: colors.border,
-            primary: colors.primary,
-            text: colors.text,
-          },
-        }}
-      >
-        <StatusBar style="light" />
-        <Stack
-          screenOptions={{
-            contentStyle: { backgroundColor: colors.background },
-            headerStyle: { backgroundColor: colors.surface },
-            headerTintColor: colors.text,
-            headerTitleStyle: { fontWeight: '700' },
+      <LiveSessionProvider>
+        <ThemeProvider
+          value={{
+            ...DarkTheme,
+            colors: {
+              ...DarkTheme.colors,
+              background: colors.background,
+              card: colors.surface,
+              border: colors.border,
+              primary: colors.primary,
+              text: colors.text,
+            },
           }}
         >
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen
-            name="session/[id]"
-            options={{ title: 'Session details' }}
-          />
-        </Stack>
-      </ThemeProvider>
+          <StatusBar style="light" />
+          <Stack
+            screenOptions={{
+              contentStyle: { backgroundColor: colors.background },
+              headerStyle: { backgroundColor: colors.surface },
+              headerTintColor: colors.text,
+              headerTitleStyle: { fontWeight: '700' },
+            }}
+          >
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="live"
+              options={{ title: 'Active session' }}
+            />
+            <Stack.Screen
+              name="session/[id]"
+              options={{ title: 'Session details' }}
+            />
+          </Stack>
+        </ThemeProvider>
+      </LiveSessionProvider>
     </SessionProvider>
   );
 }

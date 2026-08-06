@@ -21,22 +21,27 @@ npm install
 npx expo start --lan
 ```
 
-Scan the QR code with Expo Go, or press `a`, `i`, or `w` for an Android,
-iOS, or web target. Keep the phone and computer on the same network when
-possible (hotspot works if client isolation is not blocking device traffic).
+Scan the QR code with Expo Go, or press `a`, `i`, or `w` for an Android, 
+iOS, or web target. 
+- _Keep the phone and computer on the same network when possible_ 
+_(hotspot works if client isolation is not blocking device traffic)._
 
-After pulling SQLite changes, restart Metro so `metro.config.js` WASM settings
-load (required for web). Web also needs COOP/COEP headers, which the local
-Metro config sets automatically.
+After pulling SQLite changes, restart Metro so `metro.config.js` 
+- _WASM settings load (required for web)._
+- _Web also needs COOP/COEP headers, which the local Metro config sets automatically._
 
 ## MVP features
 
 - Local-only session storage with **expo-sqlite**
 - Validated load/save and one-time AsyncStorage → SQLite migration
 - Dashboard with lifetime bankroll statistics
-- Add, view, edit, and delete sessions
+- **Live session shell**: start / pause / resume / end with persistent timer
+- Addable table cards (placeholder rank badges; rules modal stub)
+- Add, view, edit, and delete completed sessions (with tables overview)
 - Configurable starting bankroll and default currency
 - Optional demo data from Settings (no auto-seed on first launch)
+
+> Upcoming: table rules editor → house-edge math → ordinal color ranking.
 
 The tracking domain is kept under `src/` so future blackjack simulation and
 training modules can be added independently behind the same store API.
@@ -46,9 +51,10 @@ training modules can be added independently behind the same store API.
 ```text
 stacktrack/
 ├── app/                          # Expo Router screens
-│   ├── _layout.tsx               # Root layout + SessionProvider
+│   ├── _layout.tsx               # Root layout + providers
 │   ├── +html.tsx
 │   ├── +not-found.tsx
+│   ├── live.tsx                  # Active live session
 │   ├── (tabs)/
 │   │   ├── _layout.tsx           # Tab navigation
 │   │   ├── index.tsx             # Dashboard
@@ -60,24 +66,29 @@ stacktrack/
 ├── src/
 │   ├── components/               # Shared UI
 │   │   ├── BankrollTrend.tsx
+│   │   ├── RankBadge.tsx
 │   │   ├── SessionForm.tsx
 │   │   ├── SessionListItem.tsx
 │   │   └── StatCard.tsx
 │   ├── context/
+│   │   ├── LiveSessionContext.tsx
 │   │   └── SessionContext.tsx    # App state + CRUD actions
 │   ├── data/
 │   │   └── sampleSessions.ts     # Optional demo data
 │   ├── lib/
 │   │   ├── format.ts             # Currency / date helpers
+│   │   ├── liveTimer.ts          # Live session elapsed helpers
 │   │   └── stats.ts              # Derived bankroll stats
 │   ├── storage/
 │   │   ├── db.ts                 # SQLite open + schema
+│   │   ├── liveSessionStore.ts   # Active session + table CRUD
 │   │   ├── mappers.ts            # Row ↔ domain mapping
 │   │   ├── migrateFromAsyncStorage.ts
 │   │   ├── sessionStore.ts       # Store API (SQLite backend)
 │   │   ├── validators.ts         # Schema validation
 │   │   └── __tests__/            # Storage unit tests
 │   ├── types/
+│   │   ├── liveSession.ts        # Live session + table types
 │   │   └── session.ts            # Session + settings types
 │   └── theme.ts                  # Colors, spacing, radius
 ├── docs/

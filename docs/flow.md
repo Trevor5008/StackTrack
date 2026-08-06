@@ -6,17 +6,21 @@ High-level navigation and data flow for the MVP.
 
 ```mermaid
 flowchart TD
-  Root["app/_layout.tsx<br/>SessionProvider"] --> Tabs[tabs]
+  Root["app/_layout.tsx<br/>SessionProvider + LiveSessionProvider"] --> Tabs[tabs]
+  Root --> Live["Active Session<br/>live"]
 
   Tabs --> Dashboard["Dashboard<br/>(tabs)/index"]
   Tabs --> Add["Add Session<br/>(tabs)/add-session"]
   Tabs --> History["History<br/>(tabs)/history"]
   Tabs --> Settings["Settings<br/>(tabs)/settings"]
 
+  Dashboard -->|Start or continue| Live
+  Live -->|End session| Dashboard
   Dashboard --> Detail["Session Detail<br/>session/id"]
   History --> Detail
   Detail --> Edit[Inline edit via SessionForm]
   Detail --> Delete[Confirm delete]
+  Detail --> Tables[Tables overview]
 ```
 
 ## Startup flow
@@ -43,6 +47,24 @@ sequenceDiagram
   Ctx-->>App: isLoading = false
   App-->>App: render tabs
 ```
+
+## Live session flow
+
+```mermaid
+flowchart TD
+  Dashboard[Dashboard] -->|Start live session| Live[Active Session screen]
+  Live -->|Add table| Tables[Table cards list]
+  Live -->|Pause / Resume| Timer[Accumulated elapsed time]
+  Live -->|End session| EndForm["Confirm location buy-in cash-out"]
+  EndForm --> Persist["Save Session + SessionTables"]
+  Persist --> Dashboard
+  Dashboard -->|Tap history item| Detail[Session Detail]
+  Detail --> TableOverview[Tables overview]
+  Tables -.->|stub| RulesModal[Rules modal later]
+```
+
+Timer state is persisted in `active_sessions`. On end, `hoursPlayed` comes from
+elapsed ms; active rows are cleared after `session_tables` are copied.
 
 ## Add session flow
 
@@ -93,10 +115,10 @@ context and recalculates on each render.
 ```mermaid
 flowchart TB
   UI[app screens + src/components]
-  Ctx[src/context/SessionContext]
-  Lib[src/lib/stats + format]
-  Types[src/types/session]
-  Persist[src/storage/sessionStore]
+  Ctx[SessionContext + LiveSessionContext]
+  Lib[src/lib/stats + format + liveTimer]
+  Types[src/types/session + liveSession]
+  Persist[sessionStore + liveSessionStore]
   Device[expo-sqlite]
 
   UI --> Ctx
