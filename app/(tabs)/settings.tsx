@@ -9,29 +9,27 @@ import {
 } from 'react-native';
 
 import { useSessions } from '@/src/context/SessionContext';
+import { confirmAction } from '@/src/lib/confirm';
 import { colors, radius, spacing } from '@/src/theme';
 
 const currencies = ['USD', 'CAD', 'EUR', 'GBP'];
 
-/**
- * Settings screen
- * @returns {JSX.Element}
- * @description This screen is used to display the settings.
- * @example
- * <SettingsScreen />
- */
 export default function SettingsScreen() {
-  const { settings, updateSettings } = useSessions();
-  // starting bankroll to handle the starting bankroll
+  const {
+    sessions,
+    settings,
+    updateSettings,
+    seedDemoData,
+    clearSessions,
+    clearAllData,
+  } = useSessions();
   const [startingBankroll, setStartingBankroll] = useState(
     String(settings.startingBankroll),
   );
-  // currency to handle the currency
   const [currency, setCurrency] = useState(settings.currency);
-  // message to handle the message
   const [message, setMessage] = useState<string | null>(null);
-  // save succeeded to handle the save succeeded
   const [saveSucceeded, setSaveSucceeded] = useState(false);
+  const [dataMessage, setDataMessage] = useState<string | null>(null);
 
   // Handles the loading of the settings
   useEffect(() => {
@@ -49,28 +47,93 @@ export default function SettingsScreen() {
    * <SettingsScreen />
    */
   const handleSave = async () => {
-    // bankroll to handle the bankroll
     const bankroll = Number(startingBankroll);
     if (!Number.isFinite(bankroll) || bankroll < 0) {
-      // set message to handle the message
       setMessage('Enter a valid non-negative bankroll.');
-      // set save succeeded to handle the save succeeded
       setSaveSucceeded(false);
       return;
     }
 
     try {
-      // update settings to handle the settings
       await updateSettings({ startingBankroll: bankroll, currency });
-      // set message to handle the message
       setMessage('Settings saved.');
-      // set save succeeded to handle the save succeeded
       setSaveSucceeded(true);
     } catch {
-      // set message to handle the message
       setMessage('Settings could not be saved.');
       setSaveSucceeded(false);
     }
+  };
+
+  const handleLoadDemo = () => {
+    const load = async () => {
+      try {
+        await seedDemoData();
+        setDataMessage('Demo sessions loaded.');
+      } catch {
+        setDataMessage(null);
+        setMessage('Demo data could not be loaded.');
+        setSaveSucceeded(false);
+      }
+    };
+
+    if (sessions.length === 0) {
+      void load();
+      return;
+    }
+
+    confirmAction(
+      {
+        title: 'Replace existing sessions?',
+        message:
+          'Loading demo data will replace your current session history on this device.',
+        confirmLabel: 'Replace',
+        destructive: true,
+      },
+      load,
+    );
+  };
+
+  const handleClearSessions = () => {
+    confirmAction(
+      {
+        title: 'Clear all sessions?',
+        message: 'This removes every saved session from local storage.',
+        confirmLabel: 'Clear',
+        destructive: true,
+      },
+      async () => {
+        try {
+          await clearSessions();
+          setDataMessage('All sessions cleared.');
+        } catch {
+          setDataMessage(null);
+          setMessage('Sessions could not be cleared.');
+          setSaveSucceeded(false);
+        }
+      },
+    );
+  };
+
+  const handleClearAll = () => {
+    confirmAction(
+      {
+        title: 'Reset all local data?',
+        message:
+          'This clears sessions and restores default settings on this device.',
+        confirmLabel: 'Reset',
+        destructive: true,
+      },
+      async () => {
+        try {
+          await clearAllData();
+          setDataMessage('Local data reset to defaults.');
+        } catch {
+          setDataMessage(null);
+          setMessage('Local data could not be reset.');
+          setSaveSucceeded(false);
+        }
+      },
+    );
   };
 
   return (
@@ -148,7 +211,6 @@ export default function SettingsScreen() {
 
         {/* pressable to handle the pressable */}
         <Pressable
-          // on press to handle the on press
           onPress={handleSave}
           style={({ pressed }) => [
             styles.saveButton,
@@ -159,7 +221,48 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
 
-      {/* view to handle the future card */}
+      <View style={styles.card}>
+        <Text style={styles.sectionLabel}>Local data</Text>
+        <Text style={styles.dataHelp}>
+          Demo sessions are optional. Your tracker starts empty until you add a
+          session or load demo data.
+        </Text>
+
+        {dataMessage ? (
+          <Text style={styles.successMessage}>{dataMessage}</Text>
+        ) : null}
+
+        <Pressable
+          onPress={handleLoadDemo}
+          style={({ pressed }) => [
+            styles.secondaryButton,
+            pressed && styles.secondaryButtonPressed,
+          ]}
+        >
+          <Text style={styles.secondaryButtonText}>Load demo data</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={handleClearSessions}
+          style={({ pressed }) => [
+            styles.dangerButton,
+            pressed && styles.dangerButtonPressed,
+          ]}
+        >
+          <Text style={styles.dangerButtonText}>Clear all sessions</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={handleClearAll}
+          style={({ pressed }) => [
+            styles.dangerButton,
+            pressed && styles.dangerButtonPressed,
+          ]}
+        >
+          <Text style={styles.dangerButtonText}>Reset all local data</Text>
+        </Pressable>
+      </View>
+
       <View style={styles.futureCard}>
         {/* text to handle the future label */}
         <Text style={styles.futureLabel}>COMING LATER</Text>
@@ -232,12 +335,52 @@ const styles = StyleSheet.create({
   },
   // label to handle the label style
   label: {
-    // color to handle the color
     color: colors.textMuted,
-    // font size to handle the font size
     fontSize: 13,
-    // font weight to handle the font weight
     fontWeight: '600',
+  },
+  sectionLabel: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  dataHelp: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  secondaryButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceElevated,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  secondaryButtonPressed: {
+    opacity: 0.8,
+  },
+  secondaryButtonText: {
+    color: colors.primary,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  dangerButton: {
+    alignItems: 'center',
+    borderColor: colors.negative,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  dangerButtonPressed: {
+    opacity: 0.8,
+  },
+  dangerButtonText: {
+    color: colors.negative,
+    fontSize: 15,
+    fontWeight: '700',
   },
   // input to handle the input style
   input: {

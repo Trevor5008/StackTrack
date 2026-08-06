@@ -145,7 +145,9 @@ export default function DashboardScreen() {
           // view to handle the empty state
           <View>
             {/* text to handle the empty state */}
-            <Text style={styles.empty}>No sessions yet. Add your first one.</Text>
+            <Text style={styles.empty}>
+              No sessions yet. Add one, or load demo data in Settings.
+            </Text>
           </View>
         ) : (
           // view to handle the session list

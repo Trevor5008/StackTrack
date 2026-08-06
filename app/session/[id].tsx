@@ -2,7 +2,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,6 +13,7 @@ import {
 
 import { SessionForm } from '@/src/components/SessionForm';
 import { useSessions } from '@/src/context/SessionContext';
+import { confirmAction } from '@/src/lib/confirm';
 import { formatCurrency, formatDate, formatHours } from '@/src/lib/format';
 import { colors, radius, spacing } from '@/src/theme';
 
@@ -57,23 +57,18 @@ export default function SessionDetailScreen() {
     );
   }
 
-  // confirm delete function to handle the confirm delete
   const confirmDelete = () => {
-    Alert.alert(
-      'Delete session?',
-      'This permanently removes the session from local storage.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            // delete the session
-            await deleteSession(session.id);
-            router.replace('/history');
-          },
-        },
-      ],
+    confirmAction(
+      {
+        title: 'Delete session?',
+        message: 'This permanently removes the session from local storage.',
+        confirmLabel: 'Delete',
+        destructive: true,
+      },
+      async () => {
+        await deleteSession(session.id);
+        router.replace('/history');
+      },
     );
   };
 

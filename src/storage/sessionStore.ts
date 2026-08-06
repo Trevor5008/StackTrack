@@ -1,138 +1,186 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-/**
- * Session store
- * @returns {JSX.Element}
- * @description This component is used to store the sessions.
- * @example
- * <SessionProvider>
- *   <SessionContext.Provider value={value}>
- *     {children}
- *   </SessionContext.Provider>
- * </SessionProvider>
- */
 import { sampleSessions } from '@/src/data/sampleSessions';
+import { getDb, SCHEMA_VERSION } from '@/src/storage/db';
+import {
+  sessionFromRow,
+  sessionInsertParams,
+  SessionRow,
+  settingsFromRow,
+  SettingsRow,
+} from '@/src/storage/mappers';
+import { migrateFromAsyncStorageIfNeeded } from '@/src/storage/migrateFromAsyncStorage';
+import {
+  isSession,
+  normalizeSession,
+} from '@/src/storage/validators';
 import { AppSettings, Session } from '@/src/types/session';
 
-/**
- * Sessions key
- * @returns {string}
- * @description This constant is used to store the sessions key.
- * @example
- * <SessionProvider>
- *   <SessionContext.Provider value={value}>
- *     {children}
- *   </SessionContext.Provider>
- * </SessionProvider>
- */
-const SESSIONS_KEY = '@stacktrack/sessions';
-/**
- * Settings key
- * @returns {string}
- * @description This constant is used to store the settings key.
- * @example
- * <SessionProvider>
- *   <SessionContext.Provider value={value}>
- *     {children}
- *   </SessionContext.Provider>
- * </SessionProvider>
- */
-const SETTINGS_KEY = '@stacktrack/settings';
+export const STORAGE_VERSION = SCHEMA_VERSION;
 
-/**
- * Default settings
- * @returns {AppSettings}
- * @description This constant is used to store the default settings.
- * @example
- * <SessionProvider>
- *   <SessionContext.Provider value={value}>
- *     {children}
- *   </SessionContext.Provider>
- * </SessionProvider>
- */
 export const defaultSettings: AppSettings = {
-  // starting bankroll to handle the starting bankroll
   startingBankroll: 5000,
-  // currency to handle the currency
   currency: 'USD',
 };
 
-/**
- * Load sessions
- * @returns {Promise<Session[]>}
- * @description This function is used to load the sessions.
- * @example
- * <SessionProvider>
- *   <SessionContext.Provider value={value}>
- *     {children}
- *   </SessionContext.Provider>
- * </SessionProvider>
- */
-export async function loadSessions(): Promise<Session[]> {
-  // value to handle the value state
-  const value = await AsyncStorage.getItem(SESSIONS_KEY);
-  // if the value is not null, return the value
-  if (value) return JSON.parse(value) as Session[];
+export type LoadSessionsResult = {
+  sessions: Session[];
+  warning: string | null;
+};
 
-  // save the sample sessions
-  await saveSessions(sampleSessions);
-  // return the sample sessions
-  return sampleSessions;
+export type LoadSettingsResult = {
+  settings: AppSettings;
+  warning: string | null;
+};
+
+export type StoredSessions = {
+  version: typeof STORAGE_VERSION;
+  sessions: Session[];
+};
+
+export type StoredSettings = {
+  version: typeof STORAGE_VERSION;
+  settings: AppSettings;
+};
+
+let migrationPromise: Promise<string | null> | null = null;
+
+async function ensureReady(): Promise<string | null> {
+  const db = await getDb();
+  if (!migrationPromise) {
+    migrationPromise = migrateFromAsyncStorageIfNeeded(db, defaultSettings).then(
+      (result) => result.warning,
+    );
+  }
+  return migrationPromise;
 }
 
-/**
- * Save sessions
- * @param {Session[]} sessions
- * @returns {Promise<void>}
- * @description This function is used to save the sessions.
- * @example
- * <SessionProvider>
- *   <SessionContext.Provider value={value}>
- *     {children}
- *   </SessionContext.Provider>
- * </SessionProvider>
- */
+const INSERT_SESSION_SQL = `INSERT INTO sessions (
+  id, date, location, starting_bankroll, buy_in, cash_out,
+  hours_played, net_result, notes, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
 export async function saveSessions(sessions: Session[]): Promise<void> {
-  // save the sessions
-  await AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+  await ensureReady();
+  const db = await getDb();
+
+  const normalized = sessions.map((session) => {
+    if (!isSession(session)) {
+      throw new Error('Cannot save invalid session data.');
+    }
+    return normalizeSession(session);
+  });
+
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM sessions');
+    for (const session of normalized) {
+      await db.runAsync(INSERT_SESSION_SQL, sessionInsertParams(session));
+    }
+  });
 }
 
-/**
- * Load settings
- * @returns {Promise<AppSettings>}
- * @description This function is used to load the settings.
- * @example
- * <SessionProvider>
- *   <SessionContext.Provider value={value}>
- *     {children}
- *   </SessionContext.Provider>
- * </SessionProvider>
- */
-export async function loadSettings(): Promise<AppSettings> {
-  // value to handle the value state
-  const value = await AsyncStorage.getItem(SETTINGS_KEY);
-  // if the value is not null, return the value
-  if (value) return JSON.parse(value) as AppSettings;
+export async function loadSessions(): Promise<LoadSessionsResult> {
+  const migrationWarning = await ensureReady();
+  const db = await getDb();
 
-  // save the default settings
-  await saveSettings(defaultSettings);
-  // return the default settings
-  return defaultSettings;
+  const rows = await db.getAllAsync<SessionRow>(
+    `SELECT id, date, location, starting_bankroll, buy_in, cash_out,
+            hours_played, net_result, notes, created_at, updated_at
+     FROM sessions
+     ORDER BY date DESC, created_at DESC`,
+  );
+
+  const sessions: Session[] = [];
+  let dropped = 0;
+
+  for (const row of rows) {
+    const candidate = sessionFromRow(row);
+    if (!isSession(candidate)) {
+      dropped += 1;
+      continue;
+    }
+    sessions.push(normalizeSession(candidate));
+  }
+
+  const loadWarning =
+    dropped > 0
+      ? `Skipped ${dropped} invalid session${dropped === 1 ? '' : 's'} from storage.`
+      : null;
+
+  const warnings = [migrationWarning, loadWarning].filter(Boolean);
+  return {
+    sessions,
+    warning: warnings.length ? warnings.join(' ') : null,
+  };
 }
 
-/**
- * Save settings
- * @param {AppSettings} settings
- * @returns {Promise<void>}
- * @description This function is used to save the settings.
- * @example
- * <SessionProvider>
- *   <SessionContext.Provider value={value}>
- *     {children}
- *   </SessionContext.Provider>
- * </SessionProvider>
- */
+export async function clearSessions(): Promise<void> {
+  await ensureReady();
+  const db = await getDb();
+  await db.runAsync('DELETE FROM sessions');
+}
+
+export async function seedDemoSessions(): Promise<Session[]> {
+  const demos = sampleSessions.map(normalizeSession);
+  for (const session of demos) {
+    if (!isSession(session)) {
+      throw new Error('Demo session data failed validation.');
+    }
+  }
+  await saveSessions(demos);
+  return demos;
+}
+
 export async function saveSettings(settings: AppSettings): Promise<void> {
-  // save the settings
-  await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  await ensureReady();
+
+  if (
+    !Number.isFinite(settings.startingBankroll) ||
+    settings.startingBankroll < 0 ||
+    !settings.currency.trim()
+  ) {
+    throw new Error('Cannot save invalid settings.');
+  }
+
+  const next: AppSettings = {
+    startingBankroll: settings.startingBankroll,
+    currency: settings.currency.trim().toUpperCase(),
+  };
+
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT INTO settings (id, starting_bankroll, currency)
+     VALUES (1, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       starting_bankroll = excluded.starting_bankroll,
+       currency = excluded.currency`,
+    [next.startingBankroll, next.currency],
+  );
+}
+
+export async function loadSettings(): Promise<LoadSettingsResult> {
+  const migrationWarning = await ensureReady();
+  const db = await getDb();
+
+  const row = await db.getFirstAsync<SettingsRow>(
+    'SELECT id, starting_bankroll, currency FROM settings WHERE id = 1',
+  );
+
+  if (!row) {
+    await saveSettings(defaultSettings);
+    return { settings: defaultSettings, warning: migrationWarning };
+  }
+
+  return {
+    settings: settingsFromRow(row),
+    warning: migrationWarning,
+  };
+}
+
+export async function clearAllData(): Promise<void> {
+  await ensureReady();
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM sessions');
+    await db.runAsync('DELETE FROM settings');
+  });
+  await saveSettings(defaultSettings);
 }
