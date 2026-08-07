@@ -1,6 +1,11 @@
 import { sampleSessions } from '@/src/data/sampleSessions';
 import { getDb, SCHEMA_VERSION } from '@/src/storage/db';
 import {
+  clearLiveAndSessionTables,
+  loadAllSessionTables,
+  restoreSessionTables,
+} from '@/src/storage/liveSessionStore';
+import {
   sessionFromRow,
   sessionInsertParams,
   SessionRow,
@@ -69,12 +74,20 @@ export async function saveSessions(sessions: Session[]): Promise<void> {
     return normalizeSession(session);
   });
 
+  const existingTables = await loadAllSessionTables();
+  const keepIds = new Set(normalized.map((session) => session.id));
+  const tablesToRestore = existingTables.filter((row) =>
+    keepIds.has(row.session_id),
+  );
+
   await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM session_tables');
     await db.runAsync('DELETE FROM sessions');
     for (const session of normalized) {
       await db.runAsync(INSERT_SESSION_SQL, sessionInsertParams(session));
     }
   });
+  await restoreSessionTables(tablesToRestore);
 }
 
 export async function loadSessions(): Promise<LoadSessionsResult> {
@@ -115,7 +128,10 @@ export async function loadSessions(): Promise<LoadSessionsResult> {
 export async function clearSessions(): Promise<void> {
   await ensureReady();
   const db = await getDb();
-  await db.runAsync('DELETE FROM sessions');
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM session_tables');
+    await db.runAsync('DELETE FROM sessions');
+  });
 }
 
 export async function seedDemoSessions(): Promise<Session[]> {
@@ -178,6 +194,7 @@ export async function loadSettings(): Promise<LoadSettingsResult> {
 export async function clearAllData(): Promise<void> {
   await ensureReady();
   const db = await getDb();
+  await clearLiveAndSessionTables();
   await db.withTransactionAsync(async () => {
     await db.runAsync('DELETE FROM sessions');
     await db.runAsync('DELETE FROM settings');
