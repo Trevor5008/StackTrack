@@ -1,7 +1,10 @@
+import { HeaderBackButton } from '@react-navigation/elements';
+import { useNavigation } from '@react-navigation/native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -16,33 +19,70 @@ import { SessionForm } from '@/src/components/SessionForm';
 import { useSessions } from '@/src/context/SessionContext';
 import { confirmAction } from '@/src/lib/confirm';
 import { formatCurrency, formatDate, formatHours } from '@/src/lib/format';
+import { formatHouseEdge } from '@/src/lib/houseEdge';
 import { formatTableRulesSummary, parseTableRules } from '@/src/lib/tableRules';
+import { rankTables } from '@/src/lib/tableRanking';
 import { loadSessionTables } from '@/src/storage/liveSessionStore';
 import { SessionTable } from '@/src/types/liveSession';
 import { colors, radius, spacing } from '@/src/theme';
 
+/**
+ * Session detail screen
+ * @returns {JSX.Element}
+ * @description This screen is used to view a session detail.
+ * @example
+ * <SessionDetailScreen />
+ */
 export default function SessionDetailScreen() {
+  const navigation = useNavigation();
   const params = useLocalSearchParams<{ id: string }>();
+  const sessionId = Array.isArray(params.id) ? params.id[0] : params.id;
   const { sessions, settings, isLoading, updateSession, deleteSession } =
     useSessions();
   const [editing, setEditing] = useState(false);
   const [tables, setTables] = useState<SessionTable[]>([]);
   const [tablesLoading, setTablesLoading] = useState(true);
-  const session = sessions.find((item) => item.id === params.id);
+  const session = sessions.find((item) => item.id === sessionId);
+  const tableRanks = useMemo(() => rankTables(tables), [tables]);
+
+  // Keep header back reliable (native default can go inert on this stack screen).
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: editing ? 'Edit session' : 'Session details',
+      gestureEnabled: true,
+      headerLeft: (props: object) => (
+        <HeaderBackButton
+          {...props}
+          onPress={() => {
+            Keyboard.dismiss();
+            if (editing) {
+              setEditing(false);
+              return;
+            }
+            if (router.canGoBack()) {
+              router.back();
+              return;
+            }
+            router.replace('/history');
+          }}
+        />
+      ),
+    });
+  }, [editing, navigation]);
 
   // Load the session tables
   useEffect(() => {
-    if (!params.id) {
+    if (!sessionId) {
       setTables([]);
       setTablesLoading(false);
       return;
     }
     setTablesLoading(true);
-    loadSessionTables(params.id)
+    loadSessionTables(sessionId)
       .then(setTables)
       .catch(() => setTables([]))
       .finally(() => setTablesLoading(false));
-  }, [params.id]);
+  }, [sessionId]);
 
   // Render loading indicator
   if (isLoading) {
@@ -108,12 +148,19 @@ export default function SessionDetailScreen() {
             startingBankroll={session.startingBankroll}
             submitLabel="Update session"
           />
+          <SessionTablesList
+            currency={settings.currency}
+            loading={tablesLoading}
+            ranks={tableRanks}
+            tables={tables}
+          />
         </ScrollView>
       </KeyboardAvoidingView>
     );
   }
 
-  return (
+  return ( 
+    // keyboard avoiding view to handle the keyboard on mobile devices
     <ScrollView contentContainerStyle={styles.content} style={styles.screen}>
       <View style={styles.hero}>
         <Text style={styles.location}>{session.location}</Text>
@@ -127,11 +174,13 @@ export default function SessionDetailScreen() {
             },
           ]}
         >
+          {/* net result */}
           {formatCurrency(session.netResult, settings.currency, true)}
         </Text>
         <Text style={styles.netLabel}>net result</Text>
       </View>
 
+  {/* session details */}
       <View style={styles.card}>
         <DetailRow
           label="Bankroll before session"
@@ -155,50 +204,14 @@ export default function SessionDetailScreen() {
         <DetailRow label="Notes" value={session.notes || 'No notes'} />
       </View>
 
-      <View style={styles.tablesSection}>
-        <Text style={styles.sectionTitle}>Tables</Text>
-        {/* Render loading indicator */}
-        {tablesLoading ? (
-          <ActivityIndicator color={colors.primary} />
-        ) : tables.length === 0 ? (
-          <Text style={styles.emptyTables}>
-            No per-table breakdown for this session.
-          </Text>
-        ) : (
-          <View style={styles.tableList}>
-            {tables.map((table) => {
-              const rules = parseTableRules(table.rulesJson);
-              return (
-                <View key={table.id} style={styles.tableRow}>
-                  <RankBadge rank={table.rankPlaceholder} />
-                  <View style={styles.tableMain}>
-                    <Text style={styles.tableName}>{table.name}</Text>
-                    <Text style={styles.tableRules}>
-                      {rules
-                        ? formatTableRulesSummary(rules)
-                        : 'No rules set'}
-                    </Text>
-                  </View>
-                  <Text
-                    style={[
-                      styles.tablePnL,
-                      {
-                        color:
-                          table.netResult >= 0
-                            ? colors.positive
-                            : colors.negative,
-                      },
-                    ]}
-                  >
-                    {formatCurrency(table.netResult, settings.currency, true)}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        )}
-      </View>
+      <SessionTablesList
+        currency={settings.currency}
+        loading={tablesLoading}
+        ranks={tableRanks}
+        tables={tables}
+      />
 
+      {/* session metadata */}
       <View style={styles.metadata}>
         <Text style={styles.metadataText}>ID: {session.id}</Text>
         <Text style={styles.metadataText}>
@@ -209,6 +222,7 @@ export default function SessionDetailScreen() {
         </Text>
       </View>
 
+      {/* session actions */}
       <View style={styles.actions}>
         <Pressable
           onPress={() => setEditing(true)}
@@ -233,11 +247,93 @@ export default function SessionDetailScreen() {
   );
 }
 
+/**
+ * Detail row component
+ * @param {Object} props - The component props.
+ * @param {string} props.label - The label of the detail row.
+ * @param {string} props.value - The value of the detail row.
+ * @returns {JSX.Element}
+ */
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.detailRow}>
       <Text style={styles.detailLabel}>{label}</Text>
       <Text style={styles.detailValue}>{value}</Text>
+    </View>
+  );
+}
+
+function SessionTablesList({
+  currency,
+  loading,
+  ranks,
+  tables,
+}: {
+  currency: string;
+  loading: boolean;
+  ranks: ReturnType<typeof rankTables>;
+  tables: SessionTable[];
+}) {
+  return (
+    <View style={styles.tablesSection}>
+      <Text style={styles.sectionTitle}>Tables</Text>
+      {loading ? (
+        <ActivityIndicator color={colors.primary} />
+      ) : tables.length === 0 ? (
+        <Text style={styles.emptyTables}>
+          No per-table breakdown for this session.
+        </Text>
+      ) : (
+        <View style={styles.tableList}>
+          {tables.map((table) => {
+            const rules = parseTableRules(table.rulesJson);
+            const rank = ranks.get(table.id);
+            return (
+              <View
+                key={table.id}
+                style={[
+                  styles.tableRow,
+                  rank?.isBest && styles.tableRowBest,
+                ]}
+              >
+                <RankBadge
+                  houseEdge={rank?.houseEdge}
+                  tier={rank?.tier}
+                  isBest={rank?.isBest}
+                />
+                <View style={styles.tableMain}>
+                  <Text style={styles.tableName}>{table.name}</Text>
+                  {rank?.isBest ? (
+                    <Text style={styles.bestRulesLabel}>Best rules</Text>
+                  ) : null}
+                  <Text style={styles.tableRules}>
+                    {rules
+                      ? `${formatTableRulesSummary(rules)}${
+                          rank?.houseEdge != null
+                            ? ` · ${formatHouseEdge(rank.houseEdge)} HE`
+                            : ''
+                        }`
+                      : 'No rules set'}
+                  </Text>
+                </View>
+                <Text
+                  style={[
+                    styles.tablePnL,
+                    {
+                      color:
+                        table.netResult >= 0
+                          ? colors.positive
+                          : colors.negative,
+                    },
+                  ]}
+                >
+                  {formatCurrency(table.netResult, currency, true)}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 }
@@ -351,6 +447,10 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     padding: spacing.md,
   },
+  tableRowBest: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+  },
   tableMain: {
     flex: 1,
   },
@@ -358,6 +458,14 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 16,
     fontWeight: '700',
+  },
+  bestRulesLabel: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    marginTop: 2,
+    textTransform: 'uppercase',
   },
   tableRules: {
     color: colors.textMuted,

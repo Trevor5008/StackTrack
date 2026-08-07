@@ -62,7 +62,11 @@ flowchart TD
   Detail --> TableOverview[Tables overview]
   Tables -->|Edit rules| RulesModal[TableRulesForm]
   RulesModal -->|Save rules_json| Tables
+  Tables --> Rank[rankTables house edge]
+  Rank --> Badge[RankBadge absolute tier]
+  Rank -->|unique lowest HE| BestFrame[Best rules frame]
   TableOverview -->|Read-only summary| RulesSummary[formatTableRulesSummary]
+  TableOverview --> Rank
 ```
 
 Timer state is persisted in `active_sessions`. On end, `hoursPlayed` comes from
@@ -139,7 +143,7 @@ context and recalculates on each render.
 flowchart TB
   UI["app screens + TableRulesForm"]
   Ctx[SessionContext + LiveSessionContext]
-  Lib[src/lib/stats + format + liveTimer + tableRules]
+  Lib[src/lib/stats + format + liveTimer + tableRules + houseEdge]
   Types[src/types/session + liveSession + tableRules]
   Persist[sessionStore + liveSessionStore]
   Device[expo-sqlite]

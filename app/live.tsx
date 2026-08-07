@@ -27,6 +27,7 @@ import {
   parseTableRules,
   serializeTableRules,
 } from '@/src/lib/tableRules';
+import { rankTables } from '@/src/lib/tableRanking';
 import { colors, radius, spacing } from '@/src/theme';
 import { TableRules } from '@/src/types/tableRules';
 
@@ -64,6 +65,8 @@ export default function LiveSessionScreen() {
     () => Math.max(0.01, Math.round((elapsedMs / 3_600_000) * 100) / 100),
     [elapsedMs],
   );
+
+  const tableRanks = useMemo(() => rankTables(tables), [tables]);
 
   // Render loading indicator
   if (isLoading) {
@@ -242,17 +245,31 @@ export default function LiveSessionScreen() {
           <View style={styles.tableList}>
             {tables.map((table) => {
               const expanded = editingTableId === table.id;
+              const rank = tableRanks.get(table.id);
               return (
-                <View key={table.id} style={styles.tableCard}>
+                <View
+                  key={table.id}
+                  style={[
+                    styles.tableCard,
+                    rank?.isBest && styles.tableCardBest,
+                  ]}
+                >
                   <Pressable
                     onPress={() =>
                       setEditingTableId(expanded ? null : table.id)
                     }
                     style={styles.tableRow}
                   >
-                    <RankBadge rank={table.rankPlaceholder} />
+                    <RankBadge
+                      houseEdge={rank?.houseEdge}
+                      tier={rank?.tier}
+                      isBest={rank?.isBest}
+                    />
                     <View style={styles.tableMain}>
                       <Text style={styles.tableName}>{table.name}</Text>
+                      {rank?.isBest ? (
+                        <Text style={styles.bestRulesLabel}>Best rules</Text>
+                      ) : null}
                       <Text
                         style={[
                           styles.tablePnL,
@@ -566,6 +583,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
   },
+  tableCardBest: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+  },
   tableRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -580,6 +601,13 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 16,
     fontWeight: '700',
+  },
+  bestRulesLabel: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   tablePnL: {
     fontSize: 14,

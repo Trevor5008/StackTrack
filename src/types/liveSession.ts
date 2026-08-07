@@ -20,7 +20,7 @@ export type ActiveTable = {
   name: string;
   sortOrder: number;
   netResult: number;
-  /** Placeholder for future house-edge ordinal ranking. */
+  /** Legacy field; display ranking is derived from rulesJson. */
   rankPlaceholder: number | null;
   /** JSON-serialized TableRules (see src/types/tableRules.ts). */
   rulesJson: string | null;

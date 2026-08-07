@@ -36,12 +36,12 @@ After pulling SQLite changes, restart Metro so `metro.config.js`
 - Validated load/save and one-time AsyncStorage → SQLite migration
 - Dashboard with lifetime bankroll statistics
 - **Live session shell**: start / pause / resume / end with persistent timer
-- Addable table cards with editable table rules (decks, payout, S17/H17, DAS, LS)
+- Addable table cards with editable rules and absolute house-edge rank badges
 - Add, view, edit, and delete completed sessions (with tables overview)
 - Configurable starting bankroll and default currency
 - Optional demo data from Settings (no auto-seed on first launch)
 
-> Upcoming: house-edge math → ordinal color ranking on RankBadge.
+> Upcoming: deeper combinatorial house-edge simulation.
 
 The tracking domain is kept under `src/` so future blackjack simulation and
 training modules can be added independently behind the same store API.
@@ -78,7 +78,9 @@ stacktrack/
 │   │   └── sampleSessions.ts     # Optional demo data
 │   ├── lib/
 │   │   ├── format.ts             # Currency / date helpers
+│   │   ├── houseEdge.ts          # Approximate HE from table rules
 │   │   ├── liveTimer.ts          # Live session elapsed helpers
+│   │   ├── tableRanking.ts       # Absolute tier + best-in-session
 │   │   ├── tableRules.ts         # Parse / serialize table rules
 │   │   └── stats.ts              # Derived bankroll stats
 │   ├── storage/

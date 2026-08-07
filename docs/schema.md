@@ -71,7 +71,7 @@ On resume, `segment_started_at` is set to now and pause clears.
 | `name` | TEXT | Display name |
 | `sort_order` | INTEGER | List order |
 | `net_result` | REAL | Manual / default `0` |
-| `rank_placeholder` | INTEGER | Nullable; ranking comes later |
+| `rank_placeholder` | INTEGER | Legacy nullable; ranking is computed from `rules_json` |
 | `rules_json` | TEXT | Nullable JSON `TableRules` (see below) |
 | `created_at` | TEXT | ISO timestamp |
 | `updated_at` | TEXT | ISO timestamp |
@@ -87,7 +87,7 @@ Snapshot of live tables when a session is ended and saved.
 | `name` | TEXT | Display name |
 | `sort_order` | INTEGER | List order |
 | `net_result` | REAL | Table P/L |
-| `rank_placeholder` | INTEGER | Nullable placeholder |
+| `rank_placeholder` | INTEGER | Legacy nullable; ranking computed from rules |
 | `rules_json` | TEXT | Nullable JSON `TableRules` snapshot |
 | `created_at` | TEXT | ISO timestamp |
 
@@ -104,6 +104,15 @@ Snapshot of live tables when a session is ended and saved.
 ```
 
 Defaults when opening the editor with no saved rules: 6 decks, 3:2, S17, DAS yes, late surrender no. Invalid JSON is treated as unset.
+
+### Ranking (derived)
+
+House edge and favorability are **computed on read** from `rules_json` (not stored):
+
+- Baseline ≈ 0.50% HE for 6D / 3:2 / S17 / DAS / no LS
+- Additive deltas for decks, 6:5, H17, no DAS, late surrender (`src/lib/houseEdge.ts`)
+- Absolute tiers: favorable (≤ 0.45), average (≤ 0.70), unfavorable (&gt; 0.70)
+- Unique lowest HE among tables with rules → “Best rules” highlight only when that table is not `unfavorable`; ties → no exclusive best
 
 ### settings
 
@@ -280,6 +289,6 @@ flowchart LR
 Keep simulation/training data out of the session tracker schema. Suggested
 later additions without rewriting the MVP model:
 
-- Table rules editor (done) → house-edge math → color ordinal ranking on `RankBadge`
+- Approximate house-edge ranking on `RankBadge` (done) → deeper combinatorial sim later
 - `SimulationRun` / `TrainingDrill` tables behind `meta.schema_version` bumps
 - Optional cloud sync behind the same `sessionStore` API
