@@ -1,5 +1,12 @@
 import { Session, WinLossRecord } from '@/src/types/session';
 
+export function sessionsForCasino(
+  sessions: Session[],
+  casinoId: string,
+): Session[] {
+  return sessions.filter((session) => session.casinoId === casinoId);
+}
+
 /**
  * Lifetime profit loss
  * @param {Session[]} sessions

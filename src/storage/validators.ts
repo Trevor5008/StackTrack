@@ -30,6 +30,7 @@ export function normalizeSession(value: Session): Session {
   return {
     ...value,
     location: value.location.trim(),
+    casinoId: value.casinoId.trim(),
     notes: value.notes?.trim() ? value.notes.trim() : undefined,
     netResult: value.cashOut - value.buyIn,
   };
@@ -45,6 +46,7 @@ export function isSession(value: unknown): value is Session {
     return false;
   }
   if (!isNonEmptyString(session.location)) return false;
+  if (!isNonEmptyString(session.casinoId)) return false;
   if (!isNonNegativeNumber(session.startingBankroll)) return false;
   if (!isNonNegativeNumber(session.buyIn)) return false;
   if (!isNonNegativeNumber(session.cashOut)) return false;
@@ -76,6 +78,9 @@ export function assertSessionInput(input: SessionInput): SessionInput {
   if (!isValidDateString(input.date)) {
     throw new Error('Enter the date as YYYY-MM-DD.');
   }
+  if (!input.casinoId.trim()) {
+    throw new Error('Select a casino.');
+  }
   if (!input.location.trim()) {
     throw new Error('Enter a casino or location.');
   }
@@ -93,6 +98,7 @@ export function assertSessionInput(input: SessionInput): SessionInput {
 
   return {
     ...input,
+    casinoId: input.casinoId.trim(),
     location: input.location.trim(),
     notes: input.notes?.trim() ? input.notes.trim() : undefined,
   };

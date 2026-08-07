@@ -96,11 +96,15 @@ function RootLayoutNav() {
               headerBackButtonDisplayMode: 'minimal',
             }}
           >
-            <Stack.Screen name="(tabs)" options={{ headerBackTitle: 'Back', headerShown: false }} />
-            <Stack.Screen name="live" options={{ title: 'Active session', headerBackTitle: 'Back' }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="live" options={{ title: 'Active session' }} />
+            <Stack.Screen
+              name="casino/[id]"
+              options={{ title: 'Casino' }}
+            />
             <Stack.Screen
               name="session/[id]"
-              options={{ title: 'Session details', headerBackTitle: 'Back' }}
+              options={{ title: 'Session details' }}
             />
           </Stack>
         </ThemeProvider>

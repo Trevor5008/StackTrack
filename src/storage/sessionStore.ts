@@ -1,4 +1,5 @@
 import { sampleSessions } from '@/src/data/sampleSessions';
+import { ensureCasino } from '@/src/storage/casinoStore';
 import { getDb, SCHEMA_VERSION } from '@/src/storage/db';
 import {
   clearLiveAndSessionTables,
@@ -59,9 +60,9 @@ async function ensureReady(): Promise<string | null> {
 }
 
 const INSERT_SESSION_SQL = `INSERT INTO sessions (
-  id, date, location, starting_bankroll, buy_in, cash_out,
+  id, date, location, casino_id, starting_bankroll, buy_in, cash_out,
   hours_played, net_result, notes, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 export async function saveSessions(sessions: Session[]): Promise<void> {
   await ensureReady();
@@ -95,7 +96,7 @@ export async function loadSessions(): Promise<LoadSessionsResult> {
   const db = await getDb();
 
   const rows = await db.getAllAsync<SessionRow>(
-    `SELECT id, date, location, starting_bankroll, buy_in, cash_out,
+    `SELECT id, date, location, casino_id, starting_bankroll, buy_in, cash_out,
             hours_played, net_result, notes, created_at, updated_at
      FROM sessions
      ORDER BY date DESC, created_at DESC`,
@@ -135,11 +136,18 @@ export async function clearSessions(): Promise<void> {
 }
 
 export async function seedDemoSessions(): Promise<Session[]> {
-  const demos = sampleSessions.map(normalizeSession);
-  for (const session of demos) {
+  const demos: Session[] = [];
+  for (const sample of sampleSessions) {
+    const casino = await ensureCasino(sample.location);
+    const session = normalizeSession({
+      ...sample,
+      casinoId: casino.id,
+      location: casino.name,
+    });
     if (!isSession(session)) {
       throw new Error('Demo session data failed validation.');
     }
+    demos.push(session);
   }
   await saveSessions(demos);
   return demos;
@@ -197,6 +205,7 @@ export async function clearAllData(): Promise<void> {
   await clearLiveAndSessionTables();
   await db.withTransactionAsync(async () => {
     await db.runAsync('DELETE FROM sessions');
+    await db.runAsync('DELETE FROM casinos');
     await db.runAsync('DELETE FROM settings');
   });
   await saveSettings(defaultSettings);

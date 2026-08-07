@@ -12,16 +12,28 @@ keys. `netResult` is normalized to `cashOut - buyIn` during validation.
 
 ## SQLite tables
 
-Database file: `stacktrack.db` · schema version: `2` (stored in `meta`)
+Database file: `stacktrack.db` · schema version: `3` (stored in `meta`)
 
 | Table | Purpose |
 | --- | --- |
 | `meta` | Key/value flags (`schema_version`, `async_migrated`) |
 | `settings` | Singleton row (`id = 1`) for starting bankroll + currency |
+| `casinos` | Named venues; sessions are children of a casino |
 | `sessions` | One row per completed blackjack sitting |
 | `active_sessions` | At most one in-progress live session |
 | `active_tables` | Tables for the in-progress live session |
 | `session_tables` | Per-table snapshot copied onto completed sessions |
+
+### casinos
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | TEXT PK | Client-generated |
+| `name` | TEXT | Display name; uniqueness is case-insensitive in app logic |
+| `created_at` | TEXT | ISO timestamp |
+| `updated_at` | TEXT | ISO timestamp |
+
+Index: `idx_casinos_name` on `(name COLLATE NOCASE)`.
 
 ### sessions
 
@@ -29,7 +41,8 @@ Database file: `stacktrack.db` · schema version: `2` (stored in `meta`)
 | --- | --- | --- |
 | `id` | TEXT PK | Client-generated |
 | `date` | TEXT | `YYYY-MM-DD` |
-| `location` | TEXT | Casino / location |
+| `location` | TEXT | Denormalized casino name (synced from `casinos.name`) |
+| `casino_id` | TEXT | FK → `casinos.id` (source of truth) |
 | `starting_bankroll` | REAL | Bankroll before session |
 | `buy_in` | REAL | Buy-in amount |
 | `cash_out` | REAL | Cash-out amount |
@@ -48,7 +61,8 @@ At most one row. Timer fields persist so app reload recovers the live session.
 | Column | Type | Notes |
 | --- | --- | --- |
 | `id` | TEXT PK | Client-generated |
-| `location` | TEXT | Optional until end; may be empty while live |
+| `casino_id` | TEXT | FK → `casinos.id` (required when live) |
+| `location` | TEXT | Denormalized casino name for the live banner |
 | `starting_bankroll` | REAL | Bankroll when the live session started |
 | `buy_in` | REAL | Nullable until end form |
 | `segment_started_at` | TEXT | ISO start of the current running segment |
@@ -61,6 +75,10 @@ At most one row. Timer fields persist so app reload recovers the live session.
 Elapsed while running = `accumulated_ms + (now - segment_started_at)`.
 On pause, that sum is written into `accumulated_ms` and `is_paused = 1`.
 On resume, `segment_started_at` is set to now and pause clears.
+
+Schema v3 migration creates `casinos` from distinct non-empty session /
+active `location` strings, sets `casino_id`, and uses `"Unknown casino"` for
+empty/orphan rows.
 
 ### active_tables
 
@@ -124,6 +142,19 @@ House edge and favorability are **computed on read** from `rules_json` (not stor
 
 ## Entities
 
+### Casino
+
+Venue entity (`src/types/casino.ts`). Sessions are children of a casino.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | `string` | yes | Generated client-side |
+| `name` | `string` | yes | Unique trimmed name (case-insensitive) |
+| `createdAt` | `string` | yes | ISO timestamp |
+| `updatedAt` | `string` | yes | ISO timestamp |
+
+Managed by `casinoStore` (`loadCasinos`, `addCasino`, `ensureCasino`, `renameCasino`).
+
 ### Session
 
 Primary record for one blackjack sitting (TypeScript shape in
@@ -133,7 +164,8 @@ Primary record for one blackjack sitting (TypeScript shape in
 | --- | --- | --- | --- |
 | `id` | `string` | yes | Generated client-side |
 | `date` | `string` | yes | `YYYY-MM-DD` |
-| `location` | `string` | yes | Casino / location name |
+| `casinoId` | `string` | yes | FK to casino |
+| `location` | `string` | yes | Denormalized casino name for display |
 | `startingBankroll` | `number` | yes | Bankroll before this session |
 | `buyIn` | `number` | yes | Amount bought in |
 | `cashOut` | `number` | yes | Amount cashed out |
@@ -182,6 +214,7 @@ Computed in `src/lib/stats.ts` from settings + sessions:
 
 | Function | Formula |
 | --- | --- |
+| `sessionsForCasino(sessions, casinoId)` | filter by `casinoId` |
 | `lifetimeProfitLoss(sessions)` | `sum(netResult)` |
 | `currentBankroll(starting, sessions)` | `starting + lifetimeProfitLoss` |
 | `totalSessions(sessions)` | `sessions.length` |
@@ -191,18 +224,29 @@ Computed in `src/lib/stats.ts` from settings + sessions:
 | `biggestWin(sessions)` | `max(netResult)` (0 if empty) |
 | `biggestLoss(sessions)` | `min(netResult)` (0 if empty) |
 
+Casino screens pass filtered sessions into the same aggregations.
+
 ## Entity relationship
 
 ```mermaid
 erDiagram
+  Casino ||--o{ Session : "has"
+  Casino ||--o| ActiveSession : "hosts"
   AppSettings ||--o{ Session : "baseline for bankroll"
   ActiveSession ||--o{ ActiveTable : "has"
   Session ||--o{ SessionTable : "snapshot"
   ActiveTable ||--o| TableRules : "rules_json"
   SessionTable ||--o| TableRules : "rules_json snapshot"
+  Casino {
+    string id PK
+    string name
+    string createdAt
+    string updatedAt
+  }
   Session {
     string id PK
     string date
+    string casinoId FK
     string location
     number startingBankroll
     number buyIn
@@ -215,6 +259,7 @@ erDiagram
   }
   ActiveSession {
     string id PK
+    string casinoId FK
     string location
     number startingBankroll
     number accumulatedMs
@@ -267,13 +312,14 @@ flowchart LR
   subgraph SQLite["stacktrack.db"]
     Meta[meta]
     SettingsTbl[settings]
+    CasinosTbl[casinos]
     SessionsTbl[sessions]
     ActiveSessions[active_sessions]
     ActiveTables["active_tables<br/>rules_json"]
     SessionTables["session_tables<br/>rules_json"]
   end
 
-  Store["sessionStore + liveSessionStore"] --> SQLite
+  Store["sessionStore + casinoStore + liveSessionStore"] --> SQLite
   RulesLib["tableRules.ts<br/>parse serialize"] --> Store
   Store -.->|"one-time import"| Legacy[AsyncStorage legacy keys]
   SessionCtx[SessionContext] --> Store

@@ -9,6 +9,10 @@ import {
 } from 'react';
 
 import {
+  addCasino as addCasinoRecord,
+  loadCasinos,
+} from '@/src/storage/casinoStore';
+import {
   clearAllData as clearAllStoredData,
   clearSessions as clearStoredSessions,
   defaultSettings,
@@ -19,16 +23,20 @@ import {
   seedDemoSessions,
 } from '@/src/storage/sessionStore';
 import { assertSessionInput } from '@/src/storage/validators';
+import { Casino } from '@/src/types/casino';
 import { AppSettings, Session, SessionInput } from '@/src/types/session';
 
 type SessionContextValue = {
   sessions: Session[];
+  casinos: Casino[];
   settings: AppSettings;
   isLoading: boolean;
   error: string | null;
   addSession: (input: SessionInput) => Promise<Session>;
   updateSession: (id: string, input: SessionInput) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
+  addCasino: (name: string) => Promise<Casino>;
+  refreshCasinos: () => Promise<void>;
   updateSettings: (settings: AppSettings) => Promise<void>;
   seedDemoData: () => Promise<void>;
   clearSessions: () => Promise<void>;
@@ -59,15 +67,22 @@ function combineWarnings(
 
 export function SessionProvider({ children }: PropsWithChildren) {
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [casinos, setCasinos] = useState<Casino[]>([]);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const refreshCasinos = useCallback(async () => {
+    const loaded = await loadCasinos();
+    setCasinos(loaded);
+  }, []);
+
   useEffect(() => {
-    Promise.all([loadSessions(), loadSettings()])
-      .then(([storedSessions, storedSettings]) => {
+    Promise.all([loadSessions(), loadSettings(), loadCasinos()])
+      .then(([storedSessions, storedSettings, loadedCasinos]) => {
         setSessions(newestFirst(storedSessions.sessions));
         setSettings(storedSettings.settings);
+        setCasinos(loadedCasinos);
         setError(
           combineWarnings(storedSessions.warning, storedSettings.warning),
         );
@@ -137,6 +152,21 @@ export function SessionProvider({ children }: PropsWithChildren) {
     [persistSessions, sessions],
   );
 
+  const addCasino = useCallback(
+    async (name: string) => {
+      const casino = await addCasinoRecord(name);
+      // Optimistic update so navigation to /casino/[id] sees the row immediately.
+      setCasinos((current) => {
+        if (current.some((item) => item.id === casino.id)) return current;
+        return [...current, casino].sort((a, b) =>
+          a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+        );
+      });
+      return casino;
+    },
+    [],
+  );
+
   const updateSettings = useCallback(
     async (next: AppSettings) => {
       const previous = settings;
@@ -155,16 +185,19 @@ export function SessionProvider({ children }: PropsWithChildren) {
 
   const seedDemoData = useCallback(async () => {
     const previous = sessions;
+    const previousCasinos = casinos;
     try {
       const demos = await seedDemoSessions();
       setSessions(newestFirst(demos));
+      await refreshCasinos();
       setError(null);
     } catch {
       setSessions(previous);
+      setCasinos(previousCasinos);
       setError('Demo data could not be loaded.');
       throw new Error('Failed to seed demo data');
     }
-  }, [sessions]);
+  }, [sessions, casinos, refreshCasinos]);
 
   const clearSessions = useCallback(async () => {
     const previous = sessions;
@@ -181,29 +214,35 @@ export function SessionProvider({ children }: PropsWithChildren) {
 
   const clearAllData = useCallback(async () => {
     const previousSessions = sessions;
+    const previousCasinos = casinos;
     const previousSettings = settings;
     setSessions([]);
+    setCasinos([]);
     setSettings(defaultSettings);
     try {
       await clearAllStoredData();
       setError(null);
     } catch {
       setSessions(previousSessions);
+      setCasinos(previousCasinos);
       setSettings(previousSettings);
       setError('Data could not be cleared.');
       throw new Error('Failed to clear all data');
     }
-  }, [sessions, settings]);
+  }, [sessions, casinos, settings]);
 
   const value = useMemo(
     () => ({
       sessions,
+      casinos,
       settings,
       isLoading,
       error,
       addSession,
       updateSession,
       deleteSession,
+      addCasino,
+      refreshCasinos,
       updateSettings,
       seedDemoData,
       clearSessions,
@@ -211,12 +250,15 @@ export function SessionProvider({ children }: PropsWithChildren) {
     }),
     [
       sessions,
+      casinos,
       settings,
       isLoading,
       error,
       addSession,
       updateSession,
       deleteSession,
+      addCasino,
+      refreshCasinos,
       updateSettings,
       seedDemoData,
       clearSessions,

@@ -1,30 +1,54 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { ensureCasino } from '@/src/storage/casinoStore';
 import { setMeta } from '@/src/storage/db';
 import { sessionInsertParams } from '@/src/storage/mappers';
 import {
   isSession,
   normalizeSession,
-  parseSessionsPayload,
   parseSettingsPayload,
 } from '@/src/storage/validators';
 import { AppSettings, Session } from '@/src/types/session';
 
-// Keys for the storage
 const SESSIONS_KEY = '@stacktrack/sessions';
 const SETTINGS_KEY = '@stacktrack/settings';
-// Key for the meta data
 export const ASYNC_MIGRATED_META_KEY = 'async_migrated';
-// Type for the async migration result
 
-// Type for the async migration result
 export type AsyncMigrationResult = {
   migrated: boolean;
   sessions: Session[];
   settings: AppSettings | null;
   warning: string | null;
 };
+
+/** Accept legacy rows that predate casinoId by filling a placeholder. */
+function coerceLegacySession(item: unknown): Session | null {
+  if (!item || typeof item !== 'object') return null;
+  const raw = item as Partial<Session>;
+  const candidate = {
+    ...raw,
+    casinoId:
+      typeof raw.casinoId === 'string' && raw.casinoId.trim()
+        ? raw.casinoId
+        : '__legacy__',
+  };
+  if (!isSession(candidate)) return null;
+  return normalizeSession(candidate);
+}
+
+function extractSessionList(parsed: unknown): unknown[] | null {
+  if (Array.isArray(parsed)) return parsed;
+  if (
+    parsed &&
+    typeof parsed === 'object' &&
+    'sessions' in parsed &&
+    Array.isArray((parsed as { sessions: unknown }).sessions)
+  ) {
+    return (parsed as { sessions: unknown[] }).sessions;
+  }
+  return null;
+}
 
 /**
  * One-time import of legacy AsyncStorage envelopes into SQLite
@@ -47,24 +71,40 @@ export async function migrateFromAsyncStorageIfNeeded(
     };
   }
 
-  // Get the raw sessions and settings from the storage
   const [rawSessions, rawSettings] = await Promise.all([
     AsyncStorage.getItem(SESSIONS_KEY),
     AsyncStorage.getItem(SETTINGS_KEY),
   ]);
 
-  // Warnings for the migration
   const warnings: string[] = [];
-  // Sessions for the migration
   let sessions: Session[] = [];
-  // Settings for the migration
   let settings: AppSettings | null = null;
 
   if (rawSessions) {
-    // Parse the sessions payload
-    const parsed = parseSessionsPayload(rawSessions);
-    sessions = parsed.sessions;
-    if (parsed.warning) warnings.push(parsed.warning);
+    try {
+      const parsed = JSON.parse(rawSessions) as unknown;
+      const list = extractSessionList(parsed);
+      if (!list) {
+        warnings.push('Saved sessions were invalid and could not be loaded.');
+      } else {
+        let dropped = 0;
+        for (const item of list) {
+          const session = coerceLegacySession(item);
+          if (!session) {
+            dropped += 1;
+            continue;
+          }
+          sessions.push(session);
+        }
+        if (dropped > 0) {
+          warnings.push(
+            `Skipped ${dropped} invalid session${dropped === 1 ? '' : 's'} from storage.`,
+          );
+        }
+      }
+    } catch {
+      warnings.push('Saved sessions were corrupt and could not be loaded.');
+    }
   }
 
   if (rawSettings) {
@@ -79,17 +119,26 @@ export async function migrateFromAsyncStorageIfNeeded(
         'SELECT COUNT(*) as count FROM sessions',
       );
       if ((existingCount?.count ?? 0) === 0) {
+        const withCasinos: Session[] = [];
         for (const session of sessions) {
-          if (!isSession(session)) continue;
-          const normalized = normalizeSession(session);
+          const casino = await ensureCasino(
+            session.location.trim() || 'Unknown casino',
+          );
+          const normalized = normalizeSession({
+            ...session,
+            casinoId: casino.id,
+            location: casino.name,
+          });
+          withCasinos.push(normalized);
           await db.runAsync(
             `INSERT OR REPLACE INTO sessions (
-              id, date, location, starting_bankroll, buy_in, cash_out,
+              id, date, location, casino_id, starting_bankroll, buy_in, cash_out,
               hours_played, net_result, notes, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             sessionInsertParams(normalized),
           );
         }
+        sessions = withCasinos;
       }
     }
 

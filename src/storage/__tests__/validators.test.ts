@@ -11,6 +11,7 @@ const validSession = {
   id: 's1',
   date: '2026-07-24',
   location: 'Riverside Casino',
+  casinoId: 'casino-1',
   startingBankroll: 5000,
   buyIn: 500,
   cashOut: 700,
@@ -25,6 +26,7 @@ describe('storage validators', () => {
     expect(isSession(validSession)).toBe(true);
     expect(isSession({ ...validSession, date: '2026-13-40' })).toBe(false);
     expect(isSession({ ...validSession, hoursPlayed: 0 })).toBe(false);
+    expect(isSession({ ...validSession, casinoId: '' })).toBe(false);
   });
 
   test('normalizeSession recomputes netResult', () => {
@@ -71,6 +73,7 @@ describe('storage validators', () => {
       assertSessionInput({
         date: '2026-07-24',
         location: '  Northstar  ',
+        casinoId: '  casino-2  ',
         startingBankroll: 5000,
         buyIn: 100,
         cashOut: 50,
@@ -82,11 +85,24 @@ describe('storage validators', () => {
       assertSessionInput({
         date: 'bad',
         location: 'Casino',
+        casinoId: 'c1',
         startingBankroll: 5000,
         buyIn: 100,
         cashOut: 50,
         hoursPlayed: 1,
       }),
     ).toThrow(/YYYY-MM-DD/);
+
+    expect(() =>
+      assertSessionInput({
+        date: '2026-07-24',
+        location: 'Casino',
+        casinoId: '   ',
+        startingBankroll: 5000,
+        buyIn: 100,
+        cashOut: 50,
+        hoursPlayed: 1,
+      }),
+    ).toThrow(/Select a casino/);
   });
 });
