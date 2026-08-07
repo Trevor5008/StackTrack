@@ -2,11 +2,11 @@ import type { SQLiteBindValue } from 'expo-sqlite';
 
 import { AppSettings, Session } from '@/src/types/session';
 
-// Type for the session row
 export type SessionRow = {
   id: string;
   date: string;
   location: string;
+  casino_id: string | null;
   starting_bankroll: number;
   buy_in: number;
   cash_out: number;
@@ -17,19 +17,18 @@ export type SessionRow = {
   updated_at: string;
 };
 
-// Type for the settings row
 export type SettingsRow = {
   id: number;
   starting_bankroll: number;
   currency: string;
 };
 
-// Function to convert session from row to session
 export function sessionFromRow(row: SessionRow): Session {
   return {
     id: row.id,
     date: row.date,
     location: row.location,
+    casinoId: row.casino_id ?? '',
     startingBankroll: row.starting_bankroll,
     buyIn: row.buy_in,
     cashOut: row.cash_out,
@@ -46,6 +45,7 @@ export function sessionInsertParams(session: Session): SQLiteBindValue[] {
     session.id,
     session.date,
     session.location,
+    session.casinoId,
     session.startingBankroll,
     session.buyIn,
     session.cashOut,
@@ -57,7 +57,6 @@ export function sessionInsertParams(session: Session): SQLiteBindValue[] {
   ];
 }
 
-// Function to convert settings from row to app settings
 export function settingsFromRow(row: SettingsRow): AppSettings {
   return {
     startingBankroll: row.starting_bankroll,

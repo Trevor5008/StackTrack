@@ -34,10 +34,11 @@ After pulling SQLite changes, restart Metro so `metro.config.js`
 
 - Local-only session storage with **expo-sqlite**
 - Validated load/save and one-time AsyncStorage → SQLite migration
-- Dashboard with lifetime bankroll statistics
-- **Live session shell**: start / pause / resume / end with persistent timer
+- **Casino-first dashboard**: casino cards with scoped stats + Add casino
+- Casino screen with metrics and **Start live session**
+- **Live session shell**: pause / resume / end (buy-in + cash-out; no location prompt)
 - Addable table cards with editable rules and absolute house-edge rank badges
-- Add, view, edit, and delete completed sessions (with tables overview)
+- Add, view, edit, and delete completed sessions (casino picker on forms)
 - Configurable starting bankroll and default currency
 - Optional demo data from Settings (no auto-seed on first launch)
 
@@ -55,9 +56,11 @@ stacktrack/
 │   ├── +html.tsx
 │   ├── +not-found.tsx
 │   ├── live.tsx                  # Active live session
+│   ├── casino/
+│   │   └── [id].tsx              # Casino metrics + start live
 │   ├── (tabs)/
 │   │   ├── _layout.tsx           # Tab navigation
-│   │   ├── index.tsx             # Dashboard
+│   │   ├── index.tsx             # Dashboard (casino cards)
 │   │   ├── add-session.tsx       # Create session
 │   │   ├── history.tsx           # Session list
 │   │   └── settings.tsx          # Bankroll + currency
@@ -66,6 +69,7 @@ stacktrack/
 ├── src/
 │   ├── components/               # Shared UI
 │   │   ├── BankrollTrend.tsx
+│   │   ├── CasinoCard.tsx
 │   │   ├── RankBadge.tsx
 │   │   ├── SessionForm.tsx
 │   │   ├── SessionListItem.tsx
@@ -77,6 +81,7 @@ stacktrack/
 │   ├── data/
 │   │   └── sampleSessions.ts     # Optional demo data
 │   ├── lib/
+│   │   ├── casinoName.ts         # Case-insensitive casino name key
 │   │   ├── format.ts             # Currency / date helpers
 │   │   ├── houseEdge.ts          # Approximate HE from table rules
 │   │   ├── liveTimer.ts          # Live session elapsed helpers
@@ -85,6 +90,7 @@ stacktrack/
 │   │   └── stats.ts              # Derived bankroll stats
 │   ├── storage/
 │   │   ├── db.ts                 # SQLite open + schema
+│   │   ├── casinoStore.ts        # Casino CRUD
 │   │   ├── liveSessionStore.ts   # Active session + table CRUD
 │   │   ├── mappers.ts            # Row ↔ domain mapping
 │   │   ├── migrateFromAsyncStorage.ts
@@ -92,6 +98,7 @@ stacktrack/
 │   │   ├── validators.ts         # Schema validation
 │   │   └── __tests__/            # Storage unit tests
 │   ├── types/
+│   │   ├── casino.ts             # Casino entity
 │   │   ├── liveSession.ts        # Live session + table types
 │   │   ├── session.ts            # Session + settings types
 │   │   └── tableRules.ts         # Blackjack table rules shape

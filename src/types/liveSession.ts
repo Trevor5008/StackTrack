@@ -1,6 +1,7 @@
-// Active session type
 export type ActiveSession = {
   id: string;
+  casinoId: string;
+  /** Denormalized casino name for the live banner. */
   location: string;
   startingBankroll: number;
   buyIn: number | null;
@@ -13,22 +14,18 @@ export type ActiveSession = {
   updatedAt: string;
 };
 
-// Active table type
 export type ActiveTable = {
   id: string;
   activeSessionId: string;
   name: string;
   sortOrder: number;
   netResult: number;
-  /** Legacy field; display ranking is derived from rulesJson. */
   rankPlaceholder: number | null;
-  /** JSON-serialized TableRules (see src/types/tableRules.ts). */
   rulesJson: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
-// Session table type
 export type SessionTable = {
   id: string;
   sessionId: string;
@@ -40,20 +37,16 @@ export type SessionTable = {
   createdAt: string;
 };
 
-// Start live session input type
 export type StartLiveSessionInput = {
-  location?: string;
+  casinoId: string;
   startingBankroll: number;
 };
 
-// End live session input type
 export type EndLiveSessionInput = {
-  location: string;
   buyIn: number;
   cashOut: number;
 };
 
-// Add table input type
 export type AddTableInput = {
   name: string;
   netResult?: number;

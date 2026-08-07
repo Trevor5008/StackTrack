@@ -1,8 +1,11 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import * as SQLite from 'expo-sqlite';
 
+import { casinoNameKey } from '@/src/lib/casinoName';
+import { createId } from '@/src/lib/liveTimer';
+
 export const DATABASE_NAME = 'stacktrack.db';
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 const SCHEMA_V1_SQL = `
 CREATE TABLE IF NOT EXISTS meta (
@@ -72,8 +75,119 @@ CREATE INDEX IF NOT EXISTS idx_session_tables_session
   ON session_tables(session_id, sort_order);
 `;
 
+const SCHEMA_V3_SQL = `
+CREATE TABLE IF NOT EXISTS casinos (
+  id TEXT PRIMARY KEY NOT NULL,
+  name TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_casinos_name ON casinos(name COLLATE NOCASE);
+`;
+
 let dbPromise: Promise<SQLiteDatabase> | null = null;
 let schemaReady = false;
+
+async function columnExists(
+  db: SQLiteDatabase,
+  table: string,
+  column: string,
+): Promise<boolean> {
+  const rows = await db.getAllAsync<{ name: string }>(
+    `PRAGMA table_info(${table})`,
+  );
+  return rows.some((row) => row.name === column);
+}
+
+async function migrateToV3(db: SQLiteDatabase): Promise<void> {
+  await db.execAsync(SCHEMA_V3_SQL);
+
+  if (!(await columnExists(db, 'sessions', 'casino_id'))) {
+    await db.execAsync('ALTER TABLE sessions ADD COLUMN casino_id TEXT');
+  }
+  if (!(await columnExists(db, 'active_sessions', 'casino_id'))) {
+    await db.execAsync(
+      'ALTER TABLE active_sessions ADD COLUMN casino_id TEXT',
+    );
+  }
+
+  const sessionLocations = await db.getAllAsync<{ location: string }>(
+    `SELECT DISTINCT location FROM sessions
+     WHERE location IS NOT NULL AND TRIM(location) != ''`,
+  );
+  const activeLocations = await db.getAllAsync<{ location: string }>(
+    `SELECT DISTINCT location FROM active_sessions
+     WHERE location IS NOT NULL AND TRIM(location) != ''`,
+  );
+
+  const names = new Map<string, string>(); // lower -> display
+  for (const row of [...sessionLocations, ...activeLocations]) {
+    const trimmed = row.location.trim();
+    if (!trimmed) continue;
+    const key = casinoNameKey(trimmed);
+    if (!names.has(key)) names.set(key, trimmed);
+  }
+
+  const existing = await db.getAllAsync<{ id: string; name: string }>(
+    'SELECT id, name FROM casinos',
+  );
+  const byLower = new Map(
+    existing.map((row) => [casinoNameKey(row.name), row.id]),
+  );
+
+  const now = new Date().toISOString();
+  for (const [key, display] of names) {
+    if (byLower.has(key)) continue;
+    const id = createId();
+    await db.runAsync(
+      `INSERT INTO casinos (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+      [id, display, now, now],
+    );
+    byLower.set(key, id);
+  }
+
+  let unknownId = byLower.get('unknown casino');
+  if (!unknownId) {
+    unknownId = createId();
+    await db.runAsync(
+      `INSERT INTO casinos (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+      [unknownId, 'Unknown casino', now, now],
+    );
+    byLower.set('unknown casino', unknownId);
+  }
+
+  const sessionsNeedingId = await db.getAllAsync<{
+    id: string;
+    location: string;
+    casino_id: string | null;
+  }>(`SELECT id, location, casino_id FROM sessions`);
+
+  for (const row of sessionsNeedingId) {
+    if (row.casino_id) continue;
+    const key = casinoNameKey(row.location ?? '');
+    const casinoId = byLower.get(key) ?? unknownId;
+    await db.runAsync(`UPDATE sessions SET casino_id = ? WHERE id = ?`, [
+      casinoId,
+      row.id,
+    ]);
+  }
+
+  const activeNeedingId = await db.getAllAsync<{
+    id: string;
+    location: string;
+    casino_id: string | null;
+  }>(`SELECT id, location, casino_id FROM active_sessions`);
+
+  for (const row of activeNeedingId) {
+    if (row.casino_id) continue;
+    const key = casinoNameKey(row.location ?? '');
+    const casinoId = byLower.get(key) ?? unknownId;
+    await db.runAsync(
+      `UPDATE active_sessions SET casino_id = ? WHERE id = ?`,
+      [casinoId, row.id],
+    );
+  }
+}
 
 export async function getDb(): Promise<SQLiteDatabase> {
   if (!dbPromise) {
@@ -93,6 +207,7 @@ export async function getDb(): Promise<SQLiteDatabase> {
     }
     await db.execAsync(SCHEMA_V1_SQL);
     await db.execAsync(SCHEMA_V2_SQL);
+    await migrateToV3(db);
     const version = await getMeta(db, 'schema_version');
     if (version !== String(SCHEMA_VERSION)) {
       await setMeta(db, 'schema_version', String(SCHEMA_VERSION));

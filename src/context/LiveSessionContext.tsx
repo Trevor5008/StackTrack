@@ -116,7 +116,7 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
   const startSession = useCallback(
     async (input: StartLiveSessionInput) => {
       const session = await startActiveSession({
-        location: input.location,
+        casinoId: input.casinoId,
         startingBankroll:
           input.startingBankroll ?? settings.startingBankroll,
       });
@@ -221,16 +221,15 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
         segmentStartedAt: activeSession.segmentStartedAt,
       });
       const hoursPlayed = Math.max(0.01, msToHoursPlayed(finalElapsed));
-      const location =
-        input.location.trim() ||
-        activeSession.location.trim() ||
-        'Unknown casino';
       const buyIn =
         Number.isFinite(input.buyIn) && input.buyIn >= 0
           ? input.buyIn
           : activeSession.startingBankroll;
       const cashOut = input.cashOut;
 
+      if (!activeSession.casinoId) {
+        throw new Error('Live session is missing a casino.');
+      }
       if (!Number.isFinite(cashOut) || cashOut < 0) {
         throw new Error('Enter a valid cash-out amount.');
       }
@@ -238,7 +237,8 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
       const today = new Date().toISOString().slice(0, 10);
       const session = await addSession({
         date: today,
-        location,
+        location: activeSession.location.trim() || 'Unknown casino',
+        casinoId: activeSession.casinoId,
         startingBankroll: activeSession.startingBankroll,
         buyIn,
         cashOut,

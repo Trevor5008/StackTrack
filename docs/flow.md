@@ -8,14 +8,17 @@ High-level navigation and data flow for the MVP.
 flowchart TD
   Root["app/_layout.tsx<br/>SessionProvider + LiveSessionProvider"] --> Tabs[tabs]
   Root --> Live["Active Session<br/>live"]
+  Root --> Casino["Casino screen<br/>casino/id"]
 
   Tabs --> Dashboard["Dashboard<br/>(tabs)/index"]
   Tabs --> Add["Add Session<br/>(tabs)/add-session"]
   Tabs --> History["History<br/>(tabs)/history"]
   Tabs --> Settings["Settings<br/>(tabs)/settings"]
 
-  Dashboard -->|Start or continue| Live
-  Live -->|End session| Dashboard
+  Dashboard -->|Add casino| Casino
+  Dashboard -->|Tap casino| Casino
+  Casino -->|Start or continue live| Live
+  Live -->|End session| Casino
   Dashboard --> Detail["Session Detail<br/>session/id"]
   History --> Detail
   Detail --> Edit[Inline edit via SessionForm]
@@ -34,7 +37,7 @@ sequenceDiagram
   participant AS as AsyncStorage legacy
 
   App->>Ctx: mount SessionProvider
-  Ctx->>Store: loadSessions() + loadSettings()
+  Ctx->>Store: loadSessions() + loadSettings() + loadCasinos()
   Store->>DB: open stacktrack.db + ensure schema
   Store->>DB: check meta.async_migrated
   alt not migrated yet
@@ -42,8 +45,8 @@ sequenceDiagram
     Store->>DB: import validated rows
     Store->>AS: remove legacy keys
   end
-  Store->>DB: SELECT sessions / settings
-  Store-->>Ctx: Session[] + AppSettings
+  Store->>DB: SELECT sessions / settings / casinos
+  Store-->>Ctx: Session[] + AppSettings + Casino[]
   Ctx-->>App: isLoading = false
   App-->>App: render tabs
 ```
@@ -52,13 +55,16 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-  Dashboard[Dashboard] -->|Start live session| Live[Active Session screen]
+  Dashboard[Dashboard casino cards] -->|Add casino| AddCasino[Name new casino]
+  AddCasino --> CasinoScreen[Casino screen]
+  Dashboard -->|Tap casino| CasinoScreen
+  CasinoScreen -->|Start live session| Live[Active session]
   Live -->|Add table| Tables[Table cards list]
   Live -->|Pause / Resume| Timer[Accumulated elapsed time]
-  Live -->|End session| EndForm["Confirm location buy-in cash-out"]
-  EndForm --> Persist["Save Session + SessionTables"]
-  Persist --> Dashboard
-  Dashboard -->|Tap history item| Detail[Session Detail]
+  Live -->|End session| EndForm["Buy-in + cash-out only"]
+  EndForm --> Persist["Session with casino_id"]
+  Persist --> CasinoScreen
+  CasinoScreen -->|Recent sessions| Detail[Session Detail]
   Detail --> TableOverview[Tables overview]
   Tables -->|Edit rules| RulesModal[TableRulesForm]
   RulesModal -->|Save rules_json| Tables
@@ -70,7 +76,8 @@ flowchart TD
 ```
 
 Timer state is persisted in `active_sessions`. On end, `hoursPlayed` comes from
-elapsed ms; active rows are cleared after `session_tables` are copied.
+elapsed ms; casino comes from the active session (no location prompt). Active
+rows are cleared after `session_tables` are copied.
 
 ## Table rules flow
 
@@ -98,14 +105,17 @@ sequenceDiagram
 ```mermaid
 flowchart LR
   A[Add Session screen] --> B[SessionForm]
-  B --> C{"Validate date<br/>location, amounts"}
+  B --> C{"Validate date<br/>casinoId, amounts"}
   C -->|invalid| B
   C -->|valid| D[SessionContext.addSession]
   D --> E["Compute netResult<br/>cashOut - buyIn"]
   E --> F["Persist Session[]<br/>via sessionStore"]
   F --> G[Navigate to History]
-  F --> H["Dashboard stats refresh<br/>on next focus/render"]
+  F --> H["Dashboard / casino stats refresh"]
 ```
+
+Manual add/edit uses a casino picker (select existing or create) so every
+session stays a child of a casino.
 
 ## Edit / delete flow
 
@@ -129,23 +139,24 @@ flowchart TD
 flowchart LR
   Settings[AppSettings.startingBankroll] --> Stats["src/lib/stats.ts"]
   Sessions["Session[]"] --> Stats
-  Stats --> Cards[StatCard values]
+  Stats --> Cards[StatCard / CasinoCard values]
   Stats --> Trend[BankrollTrend]
   Sessions --> List[SessionListItem]
+  CasinoId[casinoId filter] --> Stats
 ```
 
-Dashboard does not store aggregates. It reads `sessions` + `settings` from
-context and recalculates on each render.
+Dashboard lists casinos with scoped aggregates. Casino screen filters sessions
+by `casinoId` then reuses the same stats helpers.
 
 ## Layered architecture
 
 ```mermaid
 flowchart TB
-  UI["app screens + TableRulesForm"]
+  UI["app screens + CasinoCard + TableRulesForm"]
   Ctx[SessionContext + LiveSessionContext]
   Lib[src/lib/stats + format + liveTimer + tableRules + houseEdge]
-  Types[src/types/session + liveSession + tableRules]
-  Persist[sessionStore + liveSessionStore]
+  Types[src/types/session + casino + liveSession + tableRules]
+  Persist[sessionStore + casinoStore + liveSessionStore]
   Device[expo-sqlite]
 
   UI --> Ctx

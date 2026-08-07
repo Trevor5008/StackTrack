@@ -49,7 +49,6 @@ export default function LiveSessionScreen() {
   } = useLiveSession();
 
   const [ending, setEnding] = useState(false);
-  const [location, setLocation] = useState('');
   const [buyIn, setBuyIn] = useState('');
   const [cashOut, setCashOut] = useState('');
   const [saving, setSaving] = useState(false);
@@ -94,7 +93,6 @@ export default function LiveSessionScreen() {
 
   // Open the end session form
   const openEndForm = () => {
-    setLocation(activeSession.location || '');
     setBuyIn(String(activeSession.startingBankroll));
     setCashOut('');
     setFormError(null);
@@ -134,16 +132,20 @@ export default function LiveSessionScreen() {
   const onSaveEnd = async () => {
     setSaving(true);
     setFormError(null);
+    const casinoId = activeSession.casinoId;
     try {
       const parsedBuyIn = Number(buyIn);
       const parsedCashOut = Number(cashOut);
       await endSession({
-        location,
         buyIn: parsedBuyIn,
         cashOut: parsedCashOut,
       });
       setEnding(false);
-      router.replace('/');
+      if (casinoId) {
+        router.replace({ pathname: '/casino/[id]', params: { id: casinoId } });
+      } else {
+        router.replace('/');
+      }
     } catch (err) {
       setFormError(
         err instanceof Error ? err.message : 'Could not save the session.',
@@ -162,6 +164,7 @@ export default function LiveSessionScreen() {
       >
         <View style={styles.banner}>
           <Text style={styles.eyebrow}>LIVE SESSION</Text>
+          <Text style={styles.casinoName}>{activeSession.location}</Text>
           <Text style={styles.timer}>{formatElapsed(elapsedMs)}</Text>
           <Text style={styles.timerHint}>
             {activeSession.isPaused ? 'Paused' : 'Running'}
@@ -353,14 +356,9 @@ export default function LiveSessionScreen() {
         >
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>End session</Text>
-            <Text style={styles.fieldLabel}>Location</Text>
-            <TextInput
-              style={styles.input}
-              value={location}
-              onChangeText={setLocation}
-              placeholder="Casino name"
-              placeholderTextColor={colors.textMuted}
-            />
+            <Text style={styles.hoursReadOnly}>
+              Casino: {activeSession.location}
+            </Text>
             <Text style={styles.fieldLabel}>Buy-in</Text>
             <TextInput
               style={styles.input}
@@ -483,6 +481,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 2,
+  },
+  casinoName: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: '800',
   },
   timer: {
     color: colors.text,

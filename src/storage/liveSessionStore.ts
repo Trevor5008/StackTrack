@@ -1,5 +1,6 @@
 import { getDb } from '@/src/storage/db';
 import { createId } from '@/src/lib/liveTimer';
+import { getCasino } from '@/src/storage/casinoStore';
 import {
   ActiveSession,
   ActiveTable,
@@ -11,6 +12,7 @@ import {
 // Active session row type
 type ActiveSessionRow = {
   id: string;
+  casino_id: string | null;
   location: string;
   starting_bankroll: number;
   buy_in: number | null;
@@ -51,6 +53,7 @@ type SessionTableRow = {
 function activeSessionFromRow(row: ActiveSessionRow): ActiveSession {
   return {
     id: row.id,
+    casinoId: row.casino_id ?? '',
     location: row.location,
     startingBankroll: row.starting_bankroll,
     buyIn: row.buy_in,
@@ -96,7 +99,7 @@ function sessionTableFromRow(row: SessionTableRow): SessionTable {
 export async function loadActiveSession(): Promise<ActiveSession | null> {
   const db = await getDb();
   const row = await db.getFirstAsync<ActiveSessionRow>(
-    `SELECT id, location, starting_bankroll, buy_in, segment_started_at,
+    `SELECT id, casino_id, location, starting_bankroll, buy_in, segment_started_at,
             accumulated_ms, is_paused, paused_at, created_at, updated_at
      FROM active_sessions
      LIMIT 1`,
@@ -130,10 +133,16 @@ export async function startActiveSession(
     throw new Error('A live session is already in progress.');
   }
 
+  const casino = await getCasino(input.casinoId);
+  if (!casino) {
+    throw new Error('Select a casino before starting a session.');
+  }
+
   const now = new Date().toISOString();
   const session: ActiveSession = {
     id: createId(),
-    location: (input.location ?? '').trim(),
+    casinoId: casino.id,
+    location: casino.name,
     startingBankroll: input.startingBankroll,
     buyIn: null,
     segmentStartedAt: now,
@@ -146,11 +155,12 @@ export async function startActiveSession(
 
   await db.runAsync(
     `INSERT INTO active_sessions (
-      id, location, starting_bankroll, buy_in, segment_started_at,
+      id, casino_id, location, starting_bankroll, buy_in, segment_started_at,
       accumulated_ms, is_paused, paused_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       session.id,
+      session.casinoId,
       session.location,
       session.startingBankroll,
       session.buyIn,
@@ -173,6 +183,7 @@ export async function updateActiveSession(
   const db = await getDb();
   await db.runAsync(
     `UPDATE active_sessions SET
+      casino_id = ?,
       location = ?,
       starting_bankroll = ?,
       buy_in = ?,
@@ -183,6 +194,7 @@ export async function updateActiveSession(
       updated_at = ?
      WHERE id = ?`,
     [
+      session.casinoId,
       session.location,
       session.startingBankroll,
       session.buyIn,

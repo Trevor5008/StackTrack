@@ -7,17 +7,12 @@ import {
   View,
 } from 'react-native';
 
+import { useSessions } from '@/src/context/SessionContext';
 import { formatCurrency } from '@/src/lib/format';
+import { ensureCasino } from '@/src/storage/casinoStore';
 import { colors, radius, spacing } from '@/src/theme';
 import { SessionInput } from '@/src/types/session';
 
-/**
- * Session form props
- * @returns {SessionFormProps}
- * @description This props are used to pass the session form props.
- * @example
- * <SessionForm initialValues={} startingBankroll={} currency={} submitLabel={} onSubmit={} />
- */
 type SessionFormProps = {
   initialValues?: SessionInput;
   startingBankroll: number;
@@ -26,16 +21,9 @@ type SessionFormProps = {
   onSubmit: (input: SessionInput) => Promise<void>;
 };
 
-/**
- * Form state
- * @returns {FormState}
- * @description This state are used to handle the form state.
- * @example
- * <SessionForm initialValues={} startingBankroll={} currency={} submitLabel={} onSubmit={} />
- */
 type FormState = {
   date: string;
-  location: string;
+  casinoId: string;
   startingBankroll: string;
   buyIn: string;
   cashOut: string;
@@ -43,37 +31,18 @@ type FormState = {
   notes: string;
 };
 
-/**
- * Today
- * @returns {string}
- * @description This function is used to get the today's date.
- * @example
- * <SessionForm initialValues={} startingBankroll={} currency={} submitLabel={} onSubmit={} />
- */
 function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/**
- * Is valid date
- * @returns {boolean}
- * @description This function is used to check if the date is valid.
- * @example
- * <SessionForm initialValues={} startingBankroll={} currency={} submitLabel={} onSubmit={} />
- */
 function isValidDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  return (
+    !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+  );
 }
 
-/**
- * Session form
- * @returns {JSX.Element}
- * @description This component is used to display the session form.
- * @example
- * <SessionForm initialValues={} startingBankroll={} currency={} submitLabel={} onSubmit={} />
- */
 export function SessionForm({
   initialValues,
   startingBankroll,
@@ -81,10 +50,10 @@ export function SessionForm({
   submitLabel,
   onSubmit,
 }: SessionFormProps) {
-  // form to handle the form state
+  const { casinos, refreshCasinos } = useSessions();
   const [form, setForm] = useState<FormState>({
     date: initialValues?.date ?? today(),
-    location: initialValues?.location ?? '',
+    casinoId: initialValues?.casinoId ?? '',
     startingBankroll: String(
       initialValues?.startingBankroll ?? startingBankroll,
     ),
@@ -93,25 +62,20 @@ export function SessionForm({
     hoursPlayed: initialValues ? String(initialValues.hoursPlayed) : '',
     notes: initialValues?.notes ?? '',
   });
-  // error to handle the error state
+  const [newCasinoName, setNewCasinoName] = useState('');
   const [error, setError] = useState<string | null>(null);
-  // submitting to handle the submitting state
   const [submitting, setSubmitting] = useState(false);
 
-  // net result to handle the net result
   const netResult = useMemo(
     () => (Number(form.cashOut) || 0) - (Number(form.buyIn) || 0),
     [form.buyIn, form.cashOut],
   );
 
-  // set field to handle the set field
   const setField = (field: keyof FormState, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
   };
 
-  // handle submit to handle the handle submit
   const handleSubmit = async () => {
-    // numeric fields to handle the numeric fields
     const numericFields = [
       form.startingBankroll,
       form.buyIn,
@@ -119,16 +83,33 @@ export function SessionForm({
       form.hoursPlayed,
     ].map(Number);
 
-    // if the date is not valid, set the error
     if (!isValidDate(form.date)) {
       setError('Enter the date as YYYY-MM-DD.');
       return;
     }
-    if (!form.location.trim()) {
-      setError('Enter a casino or location.');
+
+    let casinoId = form.casinoId.trim();
+    let location = casinos.find((c) => c.id === casinoId)?.name ?? '';
+
+    if (!casinoId && newCasinoName.trim()) {
+      try {
+        const casino = await ensureCasino(newCasinoName);
+        await refreshCasinos();
+        casinoId = casino.id;
+        location = casino.name;
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : 'Could not create casino.',
+        );
+        return;
+      }
+    }
+
+    if (!casinoId || !location) {
+      setError('Select a casino or enter a new casino name.');
       return;
     }
-    // if the numeric fields are not valid, set the error
+
     if (
       numericFields.some((value) => !Number.isFinite(value) || value < 0) ||
       numericFields[3] <= 0
@@ -137,14 +118,13 @@ export function SessionForm({
       return;
     }
 
-    // set the submitting state to true
     setSubmitting(true);
     setError(null);
     try {
-      // submit the session
       await onSubmit({
         date: form.date,
-        location: form.location.trim(),
+        casinoId,
+        location,
         startingBankroll: numericFields[0],
         buyIn: numericFields[1],
         cashOut: numericFields[2],
@@ -152,42 +132,60 @@ export function SessionForm({
         notes: form.notes.trim() || undefined,
       });
     } catch {
-      // if the session could not be saved, set the error
       setError('The session could not be saved. Please try again.');
     } finally {
-      // set the submitting state to false
       setSubmitting(false);
     }
   };
 
-  // return the session form
   return (
-    // view to handle the form
     <View style={styles.form}>
-      {/* field to handle the date field */}
       <Field
         label="Date"
         value={form.date}
         placeholder="YYYY-MM-DD"
         onChangeText={(value) => setField('date', value)}
       />
-      {/* field to handle the location field */}
+
+      <Text style={styles.label}>Casino</Text>
+      <View style={styles.chipRow}>
+        {casinos.map((casino) => {
+          const selected = form.casinoId === casino.id;
+          return (
+            <Pressable
+              key={casino.id}
+              onPress={() => {
+                setField('casinoId', casino.id);
+                setNewCasinoName('');
+              }}
+              style={[styles.chip, selected && styles.chipSelected]}
+            >
+              <Text
+                style={[styles.chipText, selected && styles.chipTextSelected]}
+              >
+                {casino.name}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
       <Field
-        label="Location / casino"
-        value={form.location}
-        placeholder="Casino name"
-        onChangeText={(value) => setField('location', value)}
+        label="Or new casino"
+        value={newCasinoName}
+        placeholder="Type a new casino name"
+        onChangeText={(value) => {
+          setNewCasinoName(value);
+          if (value.trim()) setField('casinoId', '');
+        }}
       />
-      {/* field to handle the starting bankroll field */}
+
       <Field
         label="Bankroll before session"
         value={form.startingBankroll}
         keyboardType="decimal-pad"
         onChangeText={(value) => setField('startingBankroll', value)}
       />
-      {/* view to handle the row */}
       <View style={styles.row}>
-        {/* view to handle the row field */}
         <View style={styles.rowField}>
           <Field
             label="Buy-in"
@@ -197,7 +195,6 @@ export function SessionForm({
             onChangeText={(value) => setField('buyIn', value)}
           />
         </View>
-        {/* view to handle the row field */}
         <View style={styles.rowField}>
           <Field
             label="Cash-out"
@@ -208,7 +205,6 @@ export function SessionForm({
           />
         </View>
       </View>
-      {/* view to handle the result */}
       <View style={styles.result}>
         <Text style={styles.resultLabel}>Net result</Text>
         <Text
@@ -220,7 +216,6 @@ export function SessionForm({
           {formatCurrency(netResult, currency, true)}
         </Text>
       </View>
-      {/* field to handle the hours played field */}
       <Field
         label="Hours played"
         value={form.hoursPlayed}
@@ -228,28 +223,26 @@ export function SessionForm({
         keyboardType="decimal-pad"
         onChangeText={(value) => setField('hoursPlayed', value)}
       />
-      {/* field to handle the notes field */}
       <Field
-        label="Notes (optional)"
+        label="Notes"
         value={form.notes}
-        placeholder="Table conditions, takeaways, or reminders"
+        placeholder="Optional"
         multiline
         onChangeText={(value) => setField('notes', value)}
       />
-      {/* if the error is not null, display the error */}
+
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      {/* pressable to handle the pressable */}
+
       <Pressable
-        accessibilityRole="button"
+        onPress={() => void handleSubmit()}
         disabled={submitting}
-        onPress={handleSubmit}
         style={({ pressed }) => [
-          styles.button,
-          pressed && styles.buttonPressed,
-          submitting && styles.buttonDisabled,
+          styles.submit,
+          pressed && styles.pressed,
+          submitting && styles.disabled,
         ]}
       >
-        <Text style={styles.buttonText}>
+        <Text style={styles.submitText}>
           {submitting ? 'Saving…' : submitLabel}
         </Text>
       </Pressable>
@@ -257,50 +250,32 @@ export function SessionForm({
   );
 }
 
-/**
- * Field props
- * @returns {FieldProps}
- * @description This props are used to pass the field props.
- * @example
- * <Field label="Date" value={form.date} placeholder="YYYY-MM-DD" onChangeText={(value) => setField('date', value)} />
- */
-type FieldProps = {
-  label: string;
-  value: string;
-  placeholder?: string;
-  keyboardType?: 'default' | 'decimal-pad';
-  multiline?: boolean;
-  onChangeText: (value: string) => void;
-};
-
-/**
- * Field
- * @returns {JSX.Element}
- * @description This component is used to display the field.
- * @example
- * <Field label="Date" value={form.date} placeholder="YYYY-MM-DD" onChangeText={(value) => setField('date', value)} />
- */
 function Field({
   label,
   value,
-  placeholder,
-  keyboardType = 'default',
-  multiline = false,
   onChangeText,
-}: FieldProps) {
+  placeholder,
+  keyboardType,
+  multiline,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder?: string;
+  keyboardType?: 'default' | 'decimal-pad' | 'numeric';
+  multiline?: boolean;
+}) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
-        accessibilityLabel={label}
-        keyboardType={keyboardType}
-        multiline={multiline}
+        style={[styles.input, multiline && styles.multiline]}
+        value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
-        selectionColor={colors.primary}
-        style={[styles.input, multiline && styles.multilineInput]}
-        value={value}
+        keyboardType={keyboardType}
+        multiline={multiline}
       />
     </View>
   );
@@ -311,12 +286,13 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   field: {
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
   label: {
     color: colors.textMuted,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
+    textTransform: 'uppercase',
   },
   input: {
     backgroundColor: colors.input,
@@ -324,14 +300,39 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     borderWidth: 1,
     color: colors.text,
-    fontSize: 16,
-    minHeight: 48,
+    minHeight: 44,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
   },
-  multilineInput: {
-    minHeight: 100,
+  multiline: {
+    minHeight: 88,
+    paddingVertical: spacing.sm,
     textAlignVertical: 'top',
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  chip: {
+    backgroundColor: colors.input,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    minHeight: 40,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  chipSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  chipText: {
+    color: colors.text,
+    fontWeight: '600',
+  },
+  chipTextSelected: {
+    color: colors.background,
+    fontWeight: '800',
   },
   row: {
     flexDirection: 'row',
@@ -341,43 +342,40 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   result: {
-    alignItems: 'center',
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderRadius: radius.sm,
+    borderWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
     padding: spacing.md,
   },
   resultLabel: {
     color: colors.textMuted,
-    fontSize: 14,
     fontWeight: '600',
   },
   resultValue: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '800',
   },
   error: {
     color: colors.negative,
-    fontSize: 13,
   },
-  button: {
+  submit: {
     alignItems: 'center',
     backgroundColor: colors.primary,
     borderRadius: radius.sm,
-    minHeight: 52,
+    minHeight: 50,
     justifyContent: 'center',
-    marginTop: spacing.sm,
   },
-  buttonPressed: {
-    backgroundColor: colors.primaryPressed,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
+  submitText: {
     color: colors.background,
-    fontSize: 16,
     fontWeight: '800',
+  },
+  pressed: {
+    opacity: 0.8,
+  },
+  disabled: {
+    opacity: 0.6,
   },
 });
