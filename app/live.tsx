@@ -9,13 +9,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 
 // Live session screen component
 import { RankBadge } from '@/src/components/RankBadge';
 import { TableRulesForm } from '@/src/components/TableRulesForm';
+import { TextField } from '@/src/components/TextField';
 import { useLiveSession } from '@/src/context/LiveSessionContext';
 import { useSessions } from '@/src/context/SessionContext';
 import { confirmAction } from '@/src/lib/confirm';
@@ -292,18 +292,15 @@ export default function LiveSessionScreen() {
 
                   {expanded ? (
                     <View style={styles.tableExpanded}>
-                      <Text style={styles.fieldLabel}>Table name</Text>
-                      <TextInput
-                        style={styles.input}
+                      <TextField
+                        label="Table name"
                         value={table.name}
                         onChangeText={(name) =>
                           void updateTable(table.id, { name })
                         }
-                        placeholderTextColor={colors.textMuted}
                       />
-                      <Text style={styles.fieldLabel}>Net result</Text>
-                      <TextInput
-                        style={styles.input}
+                      <TextField
+                        label="Net result"
                         keyboardType="numeric"
                         value={String(table.netResult)}
                         onChangeText={(value) => {
@@ -312,7 +309,6 @@ export default function LiveSessionScreen() {
                             void updateTable(table.id, { netResult: parsed });
                           }
                         }}
-                        placeholderTextColor={colors.textMuted}
                       />
                       <Pressable
                         onPress={() => setRulesTableId(table.id)}
@@ -359,21 +355,17 @@ export default function LiveSessionScreen() {
             <Text style={styles.hoursReadOnly}>
               Casino: {activeSession.location}
             </Text>
-            <Text style={styles.fieldLabel}>Buy-in</Text>
-            <TextInput
-              style={styles.input}
+            <TextField
+              label="Buy-in"
               keyboardType="numeric"
               value={buyIn}
               onChangeText={setBuyIn}
-              placeholderTextColor={colors.textMuted}
             />
-            <Text style={styles.fieldLabel}>Cash-out</Text>
-            <TextInput
-              style={styles.input}
+            <TextField
+              label="Cash-out"
               keyboardType="numeric"
               value={cashOut}
               onChangeText={setCashOut}
-              placeholderTextColor={colors.textMuted}
             />
             <Text style={styles.hoursReadOnly}>
               Hours played (from timer): {hoursPreview}
@@ -625,21 +617,6 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     gap: spacing.sm,
     padding: spacing.md,
-  },
-  fieldLabel: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  input: {
-    backgroundColor: colors.input,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    color: colors.text,
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
   },
   rulesButton: {
     alignItems: 'center',
