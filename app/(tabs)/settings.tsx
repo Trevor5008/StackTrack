@@ -1,13 +1,7 @@
 import { useEffect, useState } from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { TextField } from '@/src/components/TextField';
 import { useSessions } from '@/src/context/SessionContext';
 import { confirmAction } from '@/src/lib/confirm';
 import { colors, radius, spacing } from '@/src/theme';
@@ -154,20 +148,11 @@ export default function SettingsScreen() {
 
       {/* view to handle the card */}
       <View style={styles.card}>
-        {/* text to handle the label */}
-        <Text style={styles.label}>Starting bankroll</Text>
-        {/* text input to handle the text input */}
-        <TextInput
-          // accessibility label to handle the accessibility label
-          accessibilityLabel="Starting bankroll"
-          keyboardType="decimal-pad"
-          // on change text to handle the on change text
-          onChangeText={setStartingBankroll}
-          // selection color to handle the selection color
-          selectionColor={colors.primary}
-          style={styles.input}
-          // value to handle the value
+        <TextField
+          label="Starting bankroll"
           value={startingBankroll}
+          onChangeText={setStartingBankroll}
+          keyboardType="decimal-pad"
         />
 
         {/* text to handle the label */}
@@ -381,20 +366,6 @@ const styles = StyleSheet.create({
     color: colors.negative,
     fontSize: 15,
     fontWeight: '700',
-  },
-  // input to handle the input style
-  input: {
-    // background color to handle the background color
-    backgroundColor: colors.input,
-    // border color to handle the border color
-    borderColor: colors.border,
-    // border radius to handle the border radius
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    color: colors.text,
-    fontSize: 16,
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
   },
   // currency row to handle the currency row style
   currencyRow: {

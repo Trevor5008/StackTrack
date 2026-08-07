@@ -8,6 +8,7 @@ Expo, React Native, and TypeScript.
 - [Run locally](#run-locally)
 - [MVP features](#mvp-features)
 - [Project structure](#project-structure)
+- [Versioning](#versioning)
 - [Docs](#docs)
 - [Technologies Used](#technologies-used)
 
@@ -107,13 +108,26 @@ stacktrack/
 │   ├── schema.md                 # Data model
 │   └── flow.md                   # App flow diagrams
 ├── assets/
-├── app.json
-├── package.json
+├── app.json                      # Expo config + app version
+├── package.json                  # npm package + app version
+├── CHANGELOG.md                  # Release notes (Keep a Changelog)
 └── README.md
 ```
 
+## Versioning
+
+StackTrack uses [Semantic Versioning](https://semver.org/) and
+[Keep a Changelog](https://keepachangelog.com/).
+
+- Bump **`package.json`** and **`app.json`** (`expo.version`) together
+- Record changes under `[Unreleased]` in [`CHANGELOG.md`](CHANGELOG.md), then
+  move them into a dated version section when you cut a release
+- Domain code lives under **`src/`** (including `src/components`). Empty root
+  `components/` / `constants/` folders from the Expo template were removed
+
 ## Docs
 
+- [Changelog](CHANGELOG.md)
 - [Data schema](docs/schema.md)
 - [App flow](docs/flow.md)
 

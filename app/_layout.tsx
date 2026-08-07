@@ -4,6 +4,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo } from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
 // Context providers
@@ -83,32 +84,34 @@ function RootLayoutNav() {
   );
 
   return (
-    <SessionProvider>
-      <LiveSessionProvider>
-        <ThemeProvider value={navigationTheme}>
-          <StatusBar style="light" />
-          <Stack
-            screenOptions={{
-              contentStyle: { backgroundColor: colors.background },
-              headerStyle: { backgroundColor: colors.surface },
-              headerTintColor: colors.text,
-              headerTitleStyle: { fontWeight: '700' },
-              headerBackButtonDisplayMode: 'minimal',
-            }}
-          >
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="live" options={{ title: 'Active session' }} />
-            <Stack.Screen
-              name="casino/[id]"
-              options={{ title: 'Casino' }}
-            />
-            <Stack.Screen
-              name="session/[id]"
-              options={{ title: 'Session details' }}
-            />
-          </Stack>
-        </ThemeProvider>
-      </LiveSessionProvider>
-    </SessionProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SessionProvider>
+        <LiveSessionProvider>
+          <ThemeProvider value={navigationTheme}>
+            <StatusBar style="light" />
+            <Stack
+              screenOptions={{
+                contentStyle: { backgroundColor: colors.background },
+                headerStyle: { backgroundColor: colors.surface },
+                headerTintColor: colors.text,
+                headerTitleStyle: { fontWeight: '700' },
+                headerBackButtonDisplayMode: 'minimal',
+              }}
+            >
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="live" options={{ title: 'Active session' }} />
+              <Stack.Screen
+                name="casino/[id]"
+                options={{ title: 'Casino' }}
+              />
+              <Stack.Screen
+                name="session/[id]"
+                options={{ title: 'Session details' }}
+              />
+            </Stack>
+          </ThemeProvider>
+        </LiveSessionProvider>
+      </SessionProvider>
+    </GestureHandlerRootView>
   );
 }

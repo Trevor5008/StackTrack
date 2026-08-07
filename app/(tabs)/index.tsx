@@ -9,11 +9,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 
 import { CasinoCard } from '@/src/components/CasinoCard';
+import { TextField } from '@/src/components/TextField';
 import { useLiveSession } from '@/src/context/LiveSessionContext';
 import { useSessions } from '@/src/context/SessionContext';
 import { formatCurrency } from '@/src/lib/format';
@@ -189,16 +189,14 @@ export default function DashboardScreen() {
           />
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Add casino</Text>
-            <Text style={styles.fieldLabel}>Name</Text>
-            <TextInput
-              style={styles.input}
+            <TextField
+              label="Name"
               value={casinoName}
               onChangeText={(value) => {
                 setCasinoName(value);
                 if (formError) setFormError(null);
               }}
               placeholder="Casino name"
-              placeholderTextColor={colors.textMuted}
               autoFocus
               returnKeyType="done"
               onSubmitEditing={() => void onAddCasino()}
@@ -341,21 +339,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     marginBottom: spacing.sm,
-  },
-  fieldLabel: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  input: {
-    backgroundColor: colors.input,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    color: colors.text,
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
   },
   modalActions: {
     flexDirection: 'row',

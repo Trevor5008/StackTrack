@@ -1,12 +1,7 @@
 import { useMemo, useState } from 'react';
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { TextField } from '@/src/components/TextField';
 import { useSessions } from '@/src/context/SessionContext';
 import { formatCurrency } from '@/src/lib/format';
 import { ensureCasino } from '@/src/storage/casinoStore';
@@ -140,7 +135,7 @@ export function SessionForm({
 
   return (
     <View style={styles.form}>
-      <Field
+      <TextField
         label="Date"
         value={form.date}
         placeholder="YYYY-MM-DD"
@@ -169,7 +164,7 @@ export function SessionForm({
           );
         })}
       </View>
-      <Field
+      <TextField
         label="Or new casino"
         value={newCasinoName}
         placeholder="Type a new casino name"
@@ -179,7 +174,7 @@ export function SessionForm({
         }}
       />
 
-      <Field
+      <TextField
         label="Bankroll before session"
         value={form.startingBankroll}
         keyboardType="decimal-pad"
@@ -187,7 +182,7 @@ export function SessionForm({
       />
       <View style={styles.row}>
         <View style={styles.rowField}>
-          <Field
+          <TextField
             label="Buy-in"
             value={form.buyIn}
             placeholder="0"
@@ -196,7 +191,7 @@ export function SessionForm({
           />
         </View>
         <View style={styles.rowField}>
-          <Field
+          <TextField
             label="Cash-out"
             value={form.cashOut}
             placeholder="0"
@@ -216,14 +211,14 @@ export function SessionForm({
           {formatCurrency(netResult, currency, true)}
         </Text>
       </View>
-      <Field
+      <TextField
         label="Hours played"
         value={form.hoursPlayed}
         placeholder="0"
         keyboardType="decimal-pad"
         onChangeText={(value) => setField('hoursPlayed', value)}
       />
-      <Field
+      <TextField
         label="Notes"
         value={form.notes}
         placeholder="Optional"
@@ -250,63 +245,15 @@ export function SessionForm({
   );
 }
 
-function Field({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-  keyboardType,
-  multiline,
-}: {
-  label: string;
-  value: string;
-  onChangeText: (value: string) => void;
-  placeholder?: string;
-  keyboardType?: 'default' | 'decimal-pad' | 'numeric';
-  multiline?: boolean;
-}) {
-  return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput
-        style={[styles.input, multiline && styles.multiline]}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textMuted}
-        keyboardType={keyboardType}
-        multiline={multiline}
-      />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   form: {
     gap: spacing.md,
-  },
-  field: {
-    gap: spacing.xs,
   },
   label: {
     color: colors.textMuted,
     fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',
-  },
-  input: {
-    backgroundColor: colors.input,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    color: colors.text,
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-  },
-  multiline: {
-    minHeight: 88,
-    paddingVertical: spacing.sm,
-    textAlignVertical: 'top',
   },
   chipRow: {
     flexDirection: 'row',
