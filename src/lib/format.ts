@@ -67,3 +67,35 @@ export function formatHours(hours: number): string {
   // return the formatted hours
   return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} hr`; // eslint-disable-line no-nested-ternary
 }
+
+/**
+ * Session list title: calendar date plus local time from createdAt.
+ */
+export function formatSessionStart(date: string, createdAt: string): string {
+  const datePart = formatDate(date);
+  const created = new Date(createdAt);
+  if (Number.isNaN(created.getTime())) return datePart;
+  const timePart = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(created);
+  return `${datePart} · ${timePart}`;
+}
+
+/**
+ * Table card primary title from minimum bet when rules exist.
+ */
+export function formatTableCardTitle(
+  rules: { minimumBet: number } | null,
+  currency: string,
+  name: string,
+): { title: string; subtitle: string | null } {
+  const trimmed = name.trim();
+  if (rules) {
+    return {
+      title: `${formatCurrency(rules.minimumBet, currency)} min`,
+      subtitle: trimmed || null,
+    };
+  }
+  return { title: trimmed || 'Table', subtitle: null };
+}

@@ -18,7 +18,8 @@ import { RankBadge } from '@/src/components/RankBadge';
 import { SessionForm } from '@/src/components/SessionForm';
 import { useSessions } from '@/src/context/SessionContext';
 import { confirmAction } from '@/src/lib/confirm';
-import { formatCurrency, formatDate, formatHours } from '@/src/lib/format';
+import { formatCurrency, formatDate, formatHours, formatTableCardTitle } from '@/src/lib/format';
+import { formatElapsed } from '@/src/lib/liveTimer';
 import { formatHouseEdge } from '@/src/lib/houseEdge';
 import { formatTableRulesSummary, parseTableRules } from '@/src/lib/tableRules';
 import { rankTables } from '@/src/lib/tableRanking';
@@ -302,9 +303,28 @@ function SessionTablesList({
                   isBest={rank?.isBest}
                 />
                 <View style={styles.tableMain}>
-                  <Text style={styles.tableName}>{table.name}</Text>
+                  {(() => {
+                    const { title, subtitle } = formatTableCardTitle(
+                      rules,
+                      currency,
+                      table.name,
+                    );
+                    return (
+                      <>
+                        <Text style={styles.tableName}>{title}</Text>
+                        {subtitle ? (
+                          <Text style={styles.tableSubtitle}>{subtitle}</Text>
+                        ) : null}
+                      </>
+                    );
+                  })()}
                   {rank?.isBest ? (
                     <Text style={styles.bestRulesLabel}>Best rules</Text>
+                  ) : null}
+                  {table.elapsedMs > 0 ? (
+                    <Text style={styles.tableElapsed}>
+                      {formatElapsed(table.elapsedMs)}
+                    </Text>
                   ) : null}
                   <Text style={styles.tableRules}>
                     {rules
@@ -458,6 +478,17 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 16,
     fontWeight: '700',
+  },
+  tableSubtitle: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  tableElapsed: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontVariant: ['tabular-nums'],
+    marginTop: 2,
   },
   bestRulesLabel: {
     color: colors.primary,

@@ -10,7 +10,9 @@ import {
 
 import {
   addCasino as addCasinoRecord,
+  deleteCasino as deleteCasinoRecord,
   loadCasinos,
+  renameCasino as renameCasinoRecord,
 } from '@/src/storage/casinoStore';
 import {
   clearAllData as clearAllStoredData,
@@ -36,6 +38,8 @@ type SessionContextValue = {
   updateSession: (id: string, input: SessionInput) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
   addCasino: (name: string) => Promise<Casino>;
+  renameCasino: (id: string, name: string) => Promise<Casino>;
+  deleteCasino: (id: string) => Promise<void>;
   refreshCasinos: () => Promise<void>;
   updateSettings: (settings: AppSettings) => Promise<void>;
   seedDemoData: () => Promise<void>;
@@ -167,6 +171,33 @@ export function SessionProvider({ children }: PropsWithChildren) {
     [],
   );
 
+  const renameCasino = useCallback(async (id: string, name: string) => {
+    const casino = await renameCasinoRecord(id, name);
+    setCasinos((current) =>
+      current
+        .map((item) => (item.id === id ? casino : item))
+        .sort((a, b) =>
+          a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+        ),
+    );
+    setSessions((current) =>
+      current.map((session) =>
+        session.casinoId === id
+          ? { ...session, location: casino.name }
+          : session,
+      ),
+    );
+    return casino;
+  }, []);
+
+  const deleteCasino = useCallback(async (id: string) => {
+    await deleteCasinoRecord(id);
+    setCasinos((current) => current.filter((item) => item.id !== id));
+    setSessions((current) =>
+      current.filter((session) => session.casinoId !== id),
+    );
+  }, []);
+
   const updateSettings = useCallback(
     async (next: AppSettings) => {
       const previous = settings;
@@ -242,6 +273,8 @@ export function SessionProvider({ children }: PropsWithChildren) {
       updateSession,
       deleteSession,
       addCasino,
+      renameCasino,
+      deleteCasino,
       refreshCasinos,
       updateSettings,
       seedDemoData,
@@ -258,6 +291,8 @@ export function SessionProvider({ children }: PropsWithChildren) {
       updateSession,
       deleteSession,
       addCasino,
+      renameCasino,
+      deleteCasino,
       refreshCasinos,
       updateSettings,
       seedDemoData,

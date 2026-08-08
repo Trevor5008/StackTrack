@@ -19,8 +19,12 @@ import { TextField } from '@/src/components/TextField';
 import { useLiveSession } from '@/src/context/LiveSessionContext';
 import { useSessions } from '@/src/context/SessionContext';
 import { confirmAction } from '@/src/lib/confirm';
-import { formatCurrency } from '@/src/lib/format';
-import { formatElapsed } from '@/src/lib/liveTimer';
+import { formatCurrency, formatTableCardTitle } from '@/src/lib/format';
+import {
+  computeElapsedMs,
+  formatElapsed,
+  msToHoursPlayed,
+} from '@/src/lib/liveTimer';
 import {
   defaultTableRules,
   formatTableRulesSummary,
@@ -39,9 +43,13 @@ export default function LiveSessionScreen() {
     tables,
     elapsedMs,
     cumulativePnL,
+    runningTableId,
     isLoading,
+    error: liveError,
     pause,
     resume,
+    playTable,
+    pauseTable,
     addTable,
     updateTable,
     endSession,
@@ -53,19 +61,21 @@ export default function LiveSessionScreen() {
   const [cashOut, setCashOut] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [tableError, setTableError] = useState<string | null>(null);
   const [editingTableId, setEditingTableId] = useState<string | null>(null);
   const [rulesTableId, setRulesTableId] = useState<string | null>(null);
   const [savingRules, setSavingRules] = useState(false);
 
   const currency = settings.currency;
 
-  // Calculate hours preview
   const hoursPreview = useMemo(
-    () => Math.max(0.01, Math.round((elapsedMs / 3_600_000) * 100) / 100),
+    () => Math.max(0.01, msToHoursPlayed(elapsedMs)),
     [elapsedMs],
   );
 
   const tableRanks = useMemo(() => rankTables(tables), [tables]);
+  const runningTable = tables.find((table) => table.id === runningTableId);
+  const allPaused = !runningTableId;
 
   // Render loading indicator
   if (isLoading) {
@@ -167,7 +177,11 @@ export default function LiveSessionScreen() {
           <Text style={styles.casinoName}>{activeSession.location}</Text>
           <Text style={styles.timer}>{formatElapsed(elapsedMs)}</Text>
           <Text style={styles.timerHint}>
-            {activeSession.isPaused ? 'Paused' : 'Running'}
+            {runningTable
+              ? `Playing · ${runningTable.name}`
+              : tables.length === 0
+                ? 'Add a table and tap Play to start timing'
+                : 'All tables paused'}
           </Text>
 
           <View style={styles.bannerStats}>
@@ -196,12 +210,14 @@ export default function LiveSessionScreen() {
 
         {/* Session controls */}
         <View style={styles.controls}>
-          {activeSession.isPaused ? (
+          {allPaused ? (
             <Pressable
               onPress={() => void resume()}
+              disabled={tables.length === 0}
               style={({ pressed }) => [
                 styles.primaryButton,
                 pressed && styles.pressed,
+                tables.length === 0 && styles.disabled,
               ]}
             >
               <Text style={styles.primaryButtonText}>Resume</Text>
@@ -228,6 +244,10 @@ export default function LiveSessionScreen() {
           </Pressable>
         </View>
 
+        {liveError || tableError ? (
+          <Text style={styles.error}>{liveError ?? tableError}</Text>
+        ) : null}
+
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Tables</Text>
           <Pressable
@@ -242,13 +262,18 @@ export default function LiveSessionScreen() {
         {/* Render empty tables */}
         {tables.length === 0 ? (
           <Text style={styles.emptyTables}>
-            No tables yet. Add one to track P/L by table.
+            No tables yet. Add one, then tap Play to start its timer.
           </Text>
         ) : (
           <View style={styles.tableList}>
             {tables.map((table) => {
               const expanded = editingTableId === table.id;
               const rank = tableRanks.get(table.id);
+              const tableElapsed = computeElapsedMs({
+                accumulatedMs: table.accumulatedMs,
+                isPaused: table.isPaused,
+                segmentStartedAt: table.segmentStartedAt,
+              });
               return (
                 <View
                   key={table.id}
@@ -269,10 +294,29 @@ export default function LiveSessionScreen() {
                       isBest={rank?.isBest}
                     />
                     <View style={styles.tableMain}>
-                      <Text style={styles.tableName}>{table.name}</Text>
+                      {(() => {
+                        const rules = parseTableRules(table.rulesJson);
+                        const { title, subtitle } = formatTableCardTitle(
+                          rules,
+                          currency,
+                          table.name,
+                        );
+                        return (
+                          <>
+                            <Text style={styles.tableName}>{title}</Text>
+                            {subtitle ? (
+                              <Text style={styles.tableSubtitle}>{subtitle}</Text>
+                            ) : null}
+                          </>
+                        );
+                      })()}
                       {rank?.isBest ? (
                         <Text style={styles.bestRulesLabel}>Best rules</Text>
                       ) : null}
+                      <Text style={styles.tableTimer}>
+                        {formatElapsed(tableElapsed)}
+                        {table.isPaused ? ' · Paused' : ' · Playing'}
+                      </Text>
                       <Text
                         style={[
                           styles.tablePnL,
@@ -289,6 +333,42 @@ export default function LiveSessionScreen() {
                     </View>
                     <Text style={styles.chevron}>{expanded ? '▾' : '▸'}</Text>
                   </Pressable>
+
+                  <View style={styles.tableTimerActions}>
+                    {table.isPaused ? (
+                      <Pressable
+                        onPress={() => {
+                          setTableError(null);
+                          void playTable(table.id).catch((err) =>
+                            setTableError(
+                              err instanceof Error
+                                ? err.message
+                                : 'Could not start table timer.',
+                            ),
+                          );
+                        }}
+                        style={({ pressed }) => [
+                          styles.tablePlayButton,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <Text style={styles.tablePlayButtonText}>Play</Text>
+                      </Pressable>
+                    ) : (
+                      <Pressable
+                        onPress={() => {
+                          setTableError(null);
+                          void pauseTable(table.id);
+                        }}
+                        style={({ pressed }) => [
+                          styles.tablePauseButton,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <Text style={styles.tablePauseButtonText}>Pause</Text>
+                      </Pressable>
+                    )}
+                  </View>
 
                   {expanded ? (
                     <View style={styles.tableExpanded}>
@@ -368,7 +448,7 @@ export default function LiveSessionScreen() {
               onChangeText={setCashOut}
             />
             <Text style={styles.hoursReadOnly}>
-              Hours played (from timer): {hoursPreview}
+              Hours played (from table timers): {hoursPreview}
             </Text>
             {formError ? <Text style={styles.error}>{formError}</Text> : null}
             <View style={styles.modalActions}>
@@ -595,6 +675,45 @@ const styles = StyleSheet.create({
   tableName: {
     color: colors.text,
     fontSize: 16,
+    fontWeight: '700',
+  },
+  tableSubtitle: {
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  tableTimer: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontVariant: ['tabular-nums'],
+    fontWeight: '600',
+  },
+  tableTimerActions: {
+    borderTopColor: colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    padding: spacing.sm,
+    paddingTop: spacing.sm,
+  },
+  tablePlayButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    minHeight: 40,
+    justifyContent: 'center',
+  },
+  tablePlayButtonText: {
+    color: colors.background,
+    fontWeight: '800',
+  },
+  tablePauseButton: {
+    alignItems: 'center',
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    minHeight: 40,
+    justifyContent: 'center',
+  },
+  tablePauseButtonText: {
+    color: colors.text,
     fontWeight: '700',
   },
   bestRulesLabel: {

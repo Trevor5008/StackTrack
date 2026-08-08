@@ -6,7 +6,11 @@ import { Swipeable } from 'react-native-gesture-handler';
 
 import { useSessions } from '@/src/context/SessionContext';
 import { confirmAction } from '@/src/lib/confirm';
-import { formatCurrency, formatDate, formatHours } from '@/src/lib/format';
+import {
+  formatCurrency,
+  formatHours,
+  formatSessionStart,
+} from '@/src/lib/format';
 import { colors, radius, spacing } from '@/src/theme';
 import { Session } from '@/src/types/session';
 
@@ -15,12 +19,15 @@ type SessionListItemProps = {
   currency: string;
   /** When false, swipe-to-delete is disabled (default true). */
   enableSwipeDelete?: boolean;
+  /** Show casino name in meta (History). Hide on casino-scoped lists. */
+  showCasinoName?: boolean;
 };
 
 export function SessionListItem({
   session,
   currency,
   enableSwipeDelete = true,
+  showCasinoName = true,
 }: SessionListItemProps) {
   const { deleteSession } = useSessions();
   const swipeableRef = useRef<Swipeable>(null);
@@ -41,6 +48,11 @@ export function SessionListItem({
     );
   };
 
+  const metaParts = [
+    showCasinoName ? session.location : null,
+    formatHours(session.hoursPlayed),
+  ].filter(Boolean);
+
   const card = (
     <Pressable
       accessibilityRole="button"
@@ -50,10 +62,10 @@ export function SessionListItem({
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
       <View style={styles.details}>
-        <Text style={styles.location}>{session.location}</Text>
-        <Text style={styles.meta}>
-          {formatDate(session.date)} · {formatHours(session.hoursPlayed)}
+        <Text style={styles.title}>
+          {formatSessionStart(session.date, session.createdAt)}
         </Text>
+        <Text style={styles.meta}>{metaParts.join(' · ')}</Text>
       </View>
       <View style={styles.result}>
         <Text
@@ -115,7 +127,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: spacing.md,
   },
-  location: {
+  title: {
     color: colors.text,
     fontSize: 16,
     fontWeight: '700',

@@ -125,6 +125,39 @@ export async function renameCasino(
   return updated;
 }
 
+/** Delete casino and cascade its sessions / live session at that venue. */
+export async function deleteCasino(id: string): Promise<void> {
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    const sessionRows = await db.getAllAsync<{ id: string }>(
+      `SELECT id FROM sessions WHERE casino_id = ?`,
+      [id],
+    );
+    for (const row of sessionRows) {
+      await db.runAsync(`DELETE FROM session_tables WHERE session_id = ?`, [
+        row.id,
+      ]);
+    }
+    await db.runAsync(`DELETE FROM sessions WHERE casino_id = ?`, [id]);
+
+    const active = await db.getFirstAsync<{ id: string }>(
+      `SELECT id FROM active_sessions WHERE casino_id = ?`,
+      [id],
+    );
+    if (active) {
+      await db.runAsync(
+        `DELETE FROM active_tables WHERE active_session_id = ?`,
+        [active.id],
+      );
+      await db.runAsync(`DELETE FROM active_sessions WHERE id = ?`, [
+        active.id,
+      ]);
+    }
+
+    await db.runAsync(`DELETE FROM casinos WHERE id = ?`, [id]);
+  });
+}
+
 export async function clearCasinos(): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM casinos');
