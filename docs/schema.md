@@ -12,7 +12,7 @@ keys. `netResult` is normalized to `cashOut - buyIn` during validation.
 
 ## SQLite tables
 
-Database file: `stacktrack.db` · schema version: `3` (stored in `meta`)
+Database file: `stacktrack.db` · schema version: `4` (stored in `meta`)
 
 | Table | Purpose |
 | --- | --- |
@@ -46,7 +46,7 @@ Index: `idx_casinos_name` on `(name COLLATE NOCASE)`.
 | `starting_bankroll` | REAL | Bankroll before session |
 | `buy_in` | REAL | Buy-in amount |
 | `cash_out` | REAL | Cash-out amount |
-| `hours_played` | REAL | Hours at the table |
+| `hours_played` | REAL | From sum of table timers when ended live; manual entry otherwise |
 | `net_result` | REAL | `cash_out - buy_in` |
 | `notes` | TEXT | Optional |
 | `created_at` | TEXT | ISO timestamp |
@@ -56,7 +56,7 @@ Index: `idx_sessions_date` on `(date DESC, created_at DESC)`.
 
 ### active_sessions
 
-At most one row. Timer fields persist so app reload recovers the live session.
+At most one row. Reloading the app recovers the live session and its tables.
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -65,20 +65,25 @@ At most one row. Timer fields persist so app reload recovers the live session.
 | `location` | TEXT | Denormalized casino name for the live banner |
 | `starting_bankroll` | REAL | Bankroll when the live session started |
 | `buy_in` | REAL | Nullable until end form |
-| `segment_started_at` | TEXT | ISO start of the current running segment |
-| `accumulated_ms` | INTEGER | Frozen elapsed while paused / prior segments |
-| `is_paused` | INTEGER | `0` / `1` |
+| `segment_started_at` | TEXT | Legacy session timer (unused for hours) |
+| `accumulated_ms` | INTEGER | Legacy session timer (unused for hours) |
+| `is_paused` | INTEGER | Legacy session timer (unused for hours) |
 | `paused_at` | TEXT | Nullable ISO timestamp |
 | `created_at` | TEXT | ISO timestamp |
 | `updated_at` | TEXT | ISO timestamp |
 
-Elapsed while running = `accumulated_ms + (now - segment_started_at)`.
-On pause, that sum is written into `accumulated_ms` and `is_paused = 1`.
-On resume, `segment_started_at` is set to now and pause clears.
+Elapsed time and `hoursPlayed` come from **per-table timers** on
+`active_tables` / `session_tables`. Session-level timer columns remain for
+schema compatibility only.
 
 Schema v3 migration creates `casinos` from distinct non-empty session /
 active `location` strings, sets `casino_id`, and uses `"Unknown casino"` for
 empty/orphan rows.
+
+Schema v4 adds table timer columns and `session_tables.elapsed_ms`. If a live
+session already had wall-clock time and tables, that elapsed is moved onto the
+**first** active table as paused `accumulated_ms` so in-progress sessions are
+not zeroed.
 
 ### active_tables
 
@@ -91,8 +96,16 @@ empty/orphan rows.
 | `net_result` | REAL | Manual / default `0` |
 | `rank_placeholder` | INTEGER | Legacy nullable; ranking is computed from `rules_json` |
 | `rules_json` | TEXT | Nullable JSON `TableRules` (see below) |
+| `accumulated_ms` | INTEGER | Frozen elapsed while paused / prior segments |
+| `segment_started_at` | TEXT | Nullable while paused |
+| `is_paused` | INTEGER | `0` / `1` (new tables start paused) |
+| `paused_at` | TEXT | Nullable ISO timestamp |
 | `created_at` | TEXT | ISO timestamp |
 | `updated_at` | TEXT | ISO timestamp |
+
+Only one table may run at a time. Play on another table is blocked until the
+running table is paused. Table elapsed = `accumulated_ms` while paused, else
+`accumulated_ms + (now - segment_started_at)`.
 
 ### session_tables
 
@@ -107,21 +120,23 @@ Snapshot of live tables when a session is ended and saved.
 | `net_result` | REAL | Table P/L |
 | `rank_placeholder` | INTEGER | Legacy nullable; ranking computed from rules |
 | `rules_json` | TEXT | Nullable JSON `TableRules` snapshot |
+| `elapsed_ms` | INTEGER | Snapshot of table timer at end |
 | `created_at` | TEXT | ISO timestamp |
 
 `rules_json` shape (`src/types/tableRules.ts`):
 
 ```ts
 {
-  decks: 1 | 2 | 4 | 6 | 8;
+  decks: 1 | 2 | 4 | 6 | 8 | 10 | 12;
   blackjackPayout: '3:2' | '6:5';
   dealer17: 'S17' | 'H17';
   doubleAfterSplit: boolean;
   lateSurrender: boolean;
+  minimumBet: number; // table minimum; default 25
 }
 ```
 
-Defaults when opening the editor with no saved rules: 6 decks, 3:2, S17, DAS yes, late surrender no. Invalid JSON is treated as unset.
+Defaults when opening the editor with no saved rules: 6 decks, 3:2, S17, DAS yes, late surrender no, `$25` minimum. Legacy `rules_json` without `minimumBet` is filled with `25` on parse. Invalid JSON is treated as unset.
 
 ### Ranking (derived)
 
@@ -169,7 +184,7 @@ Primary record for one blackjack sitting (TypeScript shape in
 | `startingBankroll` | `number` | yes | Bankroll before this session |
 | `buyIn` | `number` | yes | Amount bought in |
 | `cashOut` | `number` | yes | Amount cashed out |
-| `hoursPlayed` | `number` | yes | Hours at the table |
+| `hoursPlayed` | `number` | yes | Live end: sum of table timers; manual add/edit otherwise |
 | `netResult` | `number` | yes | Derived: `cashOut - buyIn` |
 | `notes` | `string` | no | Free-form notes |
 | `createdAt` | `string` | yes | ISO timestamp |
@@ -203,10 +218,17 @@ Derived stats shape (not persisted).
 ### ActiveSession / ActiveTable / SessionTable
 
 TypeScript shapes live in `src/types/liveSession.ts`. Managed by
-`liveSessionStore` + `LiveSessionContext`. Completing a live session calls
-`SessionContext.addSession`, copies tables into `session_tables`, then clears
-`active_*` rows. `hoursPlayed` is derived from the timer
-(`round(elapsedMs / 3_600_000, 2)`, floored to at least `0.01`).
+`liveSessionStore` + `LiveSessionContext` (`playTable` / `pauseTable`,
+`elapsedMs` = sum of table timers). Completing a live session pauses any
+running table, calls `SessionContext.addSession` with
+`hoursPlayed = max(0.01, msToHoursPlayed(sum))`, copies tables into
+`session_tables` (including `elapsed_ms`), then clears `active_*` rows.
+
+| Type | Timer fields |
+| --- | --- |
+| `ActiveTable` | `accumulatedMs`, `segmentStartedAt`, `isPaused`, `pausedAt` |
+| `SessionTable` | `elapsedMs` (snapshot at end) |
+| `ActiveSession` | legacy timer fields only; UI derives elapsed from tables |
 
 ## Derived stats
 
@@ -271,6 +293,8 @@ erDiagram
     string name
     number netResult
     string rulesJson
+    number accumulatedMs
+    boolean isPaused
   }
   SessionTable {
     string id PK
@@ -278,6 +302,7 @@ erDiagram
     string name
     number netResult
     string rulesJson
+    number elapsedMs
   }
   TableRules {
     number decks
@@ -285,6 +310,7 @@ erDiagram
     string dealer17
     boolean doubleAfterSplit
     boolean lateSurrender
+    number minimumBet
   }
   AppSettings {
     number startingBankroll
@@ -315,8 +341,8 @@ flowchart LR
     CasinosTbl[casinos]
     SessionsTbl[sessions]
     ActiveSessions[active_sessions]
-    ActiveTables["active_tables<br/>rules_json"]
-    SessionTables["session_tables<br/>rules_json"]
+    ActiveTables["active_tables<br/>rules_json + timers"]
+    SessionTables["session_tables<br/>rules_json + elapsed_ms"]
   end
 
   Store["sessionStore + casinoStore + liveSessionStore"] --> SQLite

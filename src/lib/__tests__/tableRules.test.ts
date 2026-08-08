@@ -14,6 +14,7 @@ describe('tableRules', () => {
       dealer17: 'S17',
       doubleAfterSplit: true,
       lateSurrender: false,
+      minimumBet: 25,
     });
   });
 
@@ -25,9 +26,24 @@ describe('tableRules', () => {
       dealer17: 'H17' as const,
       doubleAfterSplit: false,
       lateSurrender: true,
+      minimumBet: 50,
     };
     const json = serializeTableRules(rules);
     expect(parseTableRules(json)).toEqual(rules);
+  });
+
+  test('parseTableRules fills default minimumBet for legacy JSON', () => {
+    const legacy = {
+      decks: 6,
+      blackjackPayout: '3:2',
+      dealer17: 'S17',
+      doubleAfterSplit: true,
+      lateSurrender: false,
+    };
+    expect(parseTableRules(JSON.stringify(legacy))).toEqual({
+      ...legacy,
+      minimumBet: 25,
+    });
   });
 
   test('parseTableRules returns null for invalid input', () => {

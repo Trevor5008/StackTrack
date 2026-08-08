@@ -58,14 +58,18 @@ flowchart TD
   Dashboard[Dashboard casino cards] -->|Add casino| AddCasino[Name new casino]
   AddCasino --> CasinoScreen[Casino screen]
   Dashboard -->|Tap casino| CasinoScreen
-  CasinoScreen -->|Start live session| Live[Active session]
-  Live -->|Add table| Tables[Table cards list]
-  Live -->|Pause / Resume| Timer[Accumulated elapsed time]
-  Live -->|End session| EndForm["Buy-in + cash-out only"]
-  EndForm --> Persist["Session with casino_id"]
+  CasinoScreen -->|Start live session| Live["Active session — no auto timer"]
+  Live -->|Add table| Tables[Table cards start paused at 0]
+  Tables -->|Play on a table| TableTimer[That table timer runs]
+  TableTimer -->|Pause before other Play| Tables
+  Live -->|Banner Pause or Resume| BannerCtrl[Acts on running or last paused table]
+  BannerCtrl --> Tables
+  Live -->|End session| Freeze[Pause any running table]
+  Freeze --> EndForm["Buy-in + cash-out only"]
+  EndForm --> Persist["hoursPlayed = sum of table timers"]
   Persist --> CasinoScreen
   CasinoScreen -->|Recent sessions| Detail[Session Detail]
-  Detail --> TableOverview[Tables overview]
+  Detail --> TableOverview[Tables overview with elapsed_ms]
   Tables -->|Edit rules| RulesModal[TableRulesForm]
   RulesModal -->|Save rules_json| Tables
   Tables --> Rank[rankTables house edge]
@@ -75,9 +79,19 @@ flowchart TD
   TableOverview --> Rank
 ```
 
-Timer state is persisted in `active_sessions`. On end, `hoursPlayed` comes from
-elapsed ms; casino comes from the active session (no location prompt). Active
-rows are cleared after `session_tables` are copied.
+### Per-table timers
+
+Timers live on `active_tables` (`accumulated_ms`, `segment_started_at`,
+`is_paused`, `paused_at`). Product rules:
+
+- Starting a live session does **not** start time; the player taps **Play** on a table
+- New tables start **paused** at `0`
+- Only **one** table may run; Play on another is blocked until the running table is paused
+- Banner elapsed and end-session `hoursPlayed` are the **sum** of table elapsed times
+- Banner Pause / Resume targets the currently running table (or resumes the last paused table)
+- On end: freeze running tables, set `hoursPlayed = max(0.01, msToHoursPlayed(sum))`, snapshot each table’s elapsed to `session_tables.elapsed_ms`
+
+Helpers: `sumTableElapsedMs`, `assertCanPlayTable`, `computeElapsedMs` in `src/lib/liveTimer.ts`.
 
 ## Table rules flow
 

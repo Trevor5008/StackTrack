@@ -9,6 +9,9 @@ dist/
 web-build/
 expo-env.d.ts
 
+# Local Cursor plans / notes (not released with the app)
+.cursor/
+
 # Native
 .kotlin/
 *.orig.*

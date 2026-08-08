@@ -1,5 +1,5 @@
 import { getDb } from '@/src/storage/db';
-import { createId } from '@/src/lib/liveTimer';
+import { computeElapsedMs, createId } from '@/src/lib/liveTimer';
 import { getCasino } from '@/src/storage/casinoStore';
 import {
   ActiveSession,
@@ -9,7 +9,6 @@ import {
   StartLiveSessionInput,
 } from '@/src/types/liveSession';
 
-// Active session row type
 type ActiveSessionRow = {
   id: string;
   casino_id: string | null;
@@ -24,7 +23,6 @@ type ActiveSessionRow = {
   updated_at: string;
 };
 
-// Active table row type
 type ActiveTableRow = {
   id: string;
   active_session_id: string;
@@ -33,11 +31,14 @@ type ActiveTableRow = {
   net_result: number;
   rank_placeholder: number | null;
   rules_json: string | null;
+  accumulated_ms: number | null;
+  segment_started_at: string | null;
+  is_paused: number | null;
+  paused_at: string | null;
   created_at: string;
   updated_at: string;
 };
 
-// Session table row type
 type SessionTableRow = {
   id: string;
   session_id: string;
@@ -46,10 +47,10 @@ type SessionTableRow = {
   net_result: number;
   rank_placeholder: number | null;
   rules_json: string | null;
+  elapsed_ms: number | null;
   created_at: string;
 };
 
-// Convert active session row to active session
 function activeSessionFromRow(row: ActiveSessionRow): ActiveSession {
   return {
     id: row.id,
@@ -66,7 +67,6 @@ function activeSessionFromRow(row: ActiveSessionRow): ActiveSession {
   };
 }
 
-// Convert active table row to active table
 function activeTableFromRow(row: ActiveTableRow): ActiveTable {
   return {
     id: row.id,
@@ -76,12 +76,15 @@ function activeTableFromRow(row: ActiveTableRow): ActiveTable {
     netResult: row.net_result,
     rankPlaceholder: row.rank_placeholder,
     rulesJson: row.rules_json,
+    accumulatedMs: row.accumulated_ms ?? 0,
+    segmentStartedAt: row.segment_started_at,
+    isPaused: row.is_paused !== 0,
+    pausedAt: row.paused_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
 
-// Convert session table row to session table
 function sessionTableFromRow(row: SessionTableRow): SessionTable {
   return {
     id: row.id,
@@ -91,11 +94,11 @@ function sessionTableFromRow(row: SessionTableRow): SessionTable {
     netResult: row.net_result,
     rankPlaceholder: row.rank_placeholder,
     rulesJson: row.rules_json,
+    elapsedMs: row.elapsed_ms ?? 0,
     createdAt: row.created_at,
   };
 }
 
-// Load the active session
 export async function loadActiveSession(): Promise<ActiveSession | null> {
   const db = await getDb();
   const row = await db.getFirstAsync<ActiveSessionRow>(
@@ -107,14 +110,15 @@ export async function loadActiveSession(): Promise<ActiveSession | null> {
   return row ? activeSessionFromRow(row) : null;
 }
 
-// Load the active tables
 export async function loadActiveTables(
   activeSessionId: string,
 ): Promise<ActiveTable[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<ActiveTableRow>(
     `SELECT id, active_session_id, name, sort_order, net_result,
-            rank_placeholder, rules_json, created_at, updated_at
+            rank_placeholder, rules_json,
+            accumulated_ms, segment_started_at, is_paused, paused_at,
+            created_at, updated_at
      FROM active_tables
      WHERE active_session_id = ?
      ORDER BY sort_order ASC, created_at ASC`,
@@ -123,7 +127,6 @@ export async function loadActiveTables(
   return rows.map(activeTableFromRow);
 }
 
-// Start a new active session
 export async function startActiveSession(
   input: StartLiveSessionInput,
 ): Promise<ActiveSession> {
@@ -147,8 +150,8 @@ export async function startActiveSession(
     buyIn: null,
     segmentStartedAt: now,
     accumulatedMs: 0,
-    isPaused: false,
-    pausedAt: null,
+    isPaused: true,
+    pausedAt: now,
     createdAt: now,
     updatedAt: now,
   };
@@ -166,8 +169,8 @@ export async function startActiveSession(
       session.buyIn,
       session.segmentStartedAt,
       session.accumulatedMs,
-      0,
-      null,
+      1,
+      session.pausedAt,
       session.createdAt,
       session.updatedAt,
     ],
@@ -176,7 +179,6 @@ export async function startActiveSession(
   return session;
 }
 
-// Update the active session
 export async function updateActiveSession(
   session: ActiveSession,
 ): Promise<void> {
@@ -208,7 +210,6 @@ export async function updateActiveSession(
   );
 }
 
-// Add a new active table
 export async function addActiveTable(
   activeSessionId: string,
   input: AddTableInput,
@@ -224,6 +225,10 @@ export async function addActiveTable(
     netResult: input.netResult ?? 0,
     rankPlaceholder: null,
     rulesJson: null,
+    accumulatedMs: 0,
+    segmentStartedAt: null,
+    isPaused: true,
+    pausedAt: now,
     createdAt: now,
     updatedAt: now,
   };
@@ -231,8 +236,10 @@ export async function addActiveTable(
   await db.runAsync(
     `INSERT INTO active_tables (
       id, active_session_id, name, sort_order, net_result,
-      rank_placeholder, rules_json, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      rank_placeholder, rules_json,
+      accumulated_ms, segment_started_at, is_paused, paused_at,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       table.id,
       table.activeSessionId,
@@ -241,6 +248,10 @@ export async function addActiveTable(
       table.netResult,
       table.rankPlaceholder,
       table.rulesJson,
+      table.accumulatedMs,
+      table.segmentStartedAt,
+      1,
+      table.pausedAt,
       table.createdAt,
       table.updatedAt,
     ],
@@ -249,7 +260,6 @@ export async function addActiveTable(
   return table;
 }
 
-// Update an active table
 export async function updateActiveTable(table: ActiveTable): Promise<void> {
   const db = await getDb();
   await db.runAsync(
@@ -259,6 +269,10 @@ export async function updateActiveTable(table: ActiveTable): Promise<void> {
       net_result = ?,
       rank_placeholder = ?,
       rules_json = ?,
+      accumulated_ms = ?,
+      segment_started_at = ?,
+      is_paused = ?,
+      paused_at = ?,
       updated_at = ?
      WHERE id = ?`,
     [
@@ -267,13 +281,16 @@ export async function updateActiveTable(table: ActiveTable): Promise<void> {
       table.netResult,
       table.rankPlaceholder,
       table.rulesJson,
+      table.accumulatedMs,
+      table.segmentStartedAt,
+      table.isPaused ? 1 : 0,
+      table.pausedAt,
       table.updatedAt,
       table.id,
     ],
   );
 }
 
-// Clear the active session
 export async function clearActiveSession(): Promise<void> {
   const db = await getDb();
   await db.withTransactionAsync(async () => {
@@ -282,13 +299,13 @@ export async function clearActiveSession(): Promise<void> {
   });
 }
 
-// Copy tables to a session
 export async function copyTablesToSession(
   sessionId: string,
   tables: ActiveTable[],
 ): Promise<SessionTable[]> {
   const db = await getDb();
   const now = new Date().toISOString();
+  const nowMs = Date.now();
   const copied: SessionTable[] = tables.map((table) => ({
     id: createId(),
     sessionId,
@@ -297,6 +314,12 @@ export async function copyTablesToSession(
     netResult: table.netResult,
     rankPlaceholder: table.rankPlaceholder,
     rulesJson: table.rulesJson,
+    elapsedMs: computeElapsedMs({
+      accumulatedMs: table.accumulatedMs,
+      isPaused: table.isPaused,
+      segmentStartedAt: table.segmentStartedAt,
+      nowMs,
+    }),
     createdAt: now,
   }));
 
@@ -305,8 +328,8 @@ export async function copyTablesToSession(
       await db.runAsync(
         `INSERT INTO session_tables (
           id, session_id, name, sort_order, net_result,
-          rank_placeholder, rules_json, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          rank_placeholder, rules_json, elapsed_ms, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           table.id,
           table.sessionId,
@@ -315,6 +338,7 @@ export async function copyTablesToSession(
           table.netResult,
           table.rankPlaceholder,
           table.rulesJson,
+          table.elapsedMs,
           table.createdAt,
         ],
       );
@@ -324,14 +348,13 @@ export async function copyTablesToSession(
   return copied;
 }
 
-// Load the session tables
 export async function loadSessionTables(
   sessionId: string,
 ): Promise<SessionTable[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<SessionTableRow>(
     `SELECT id, session_id, name, sort_order, net_result,
-            rank_placeholder, rules_json, created_at
+            rank_placeholder, rules_json, elapsed_ms, created_at
      FROM session_tables
      WHERE session_id = ?
      ORDER BY sort_order ASC, created_at ASC`,
@@ -340,17 +363,15 @@ export async function loadSessionTables(
   return rows.map(sessionTableFromRow);
 }
 
-// Load all session tables
 export async function loadAllSessionTables(): Promise<SessionTableRow[]> {
   const db = await getDb();
   return db.getAllAsync<SessionTableRow>(
     `SELECT id, session_id, name, sort_order, net_result,
-            rank_placeholder, rules_json, created_at
+            rank_placeholder, rules_json, elapsed_ms, created_at
      FROM session_tables`,
   );
 }
 
-// Restore session tables
 export async function restoreSessionTables(
   rows: SessionTableRow[],
 ): Promise<void> {
@@ -361,8 +382,8 @@ export async function restoreSessionTables(
       await db.runAsync(
         `INSERT INTO session_tables (
           id, session_id, name, sort_order, net_result,
-          rank_placeholder, rules_json, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          rank_placeholder, rules_json, elapsed_ms, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           row.id,
           row.session_id,
@@ -371,6 +392,7 @@ export async function restoreSessionTables(
           row.net_result,
           row.rank_placeholder,
           row.rules_json,
+          row.elapsed_ms ?? 0,
           row.created_at,
         ],
       );
@@ -378,7 +400,6 @@ export async function restoreSessionTables(
   });
 }
 
-// Clear live and session tables
 export async function clearLiveAndSessionTables(): Promise<void> {
   const db = await getDb();
   await db.withTransactionAsync(async () => {

@@ -37,9 +37,11 @@ After pulling SQLite changes, restart Metro so `metro.config.js`
 - Validated load/save and one-time AsyncStorage → SQLite migration
 - **Casino-first dashboard**: casino cards with scoped stats + Add casino
 - Casino screen with metrics and **Start live session**
-- **Live session shell**: pause / resume / end (buy-in + cash-out; no location prompt)
-- Addable table cards with editable rules and absolute house-edge rank badges
+- **Live session shell**: per-table Play / Pause (one timer at a time); end with buy-in + cash-out (no location prompt)
+- Session hours from the **sum of table timers**; each table’s elapsed is snapshotted on end
+- Addable table cards with editable rules, minimum bet, and absolute house-edge rank badges
 - Add, view, edit, and delete completed sessions (casino picker on forms)
+- Swipe-to-delete on casino and session cards
 - Configurable starting bankroll and default currency
 - Optional demo data from Settings (no auto-seed on first launch)
 
@@ -75,7 +77,8 @@ stacktrack/
 │   │   ├── SessionForm.tsx
 │   │   ├── SessionListItem.tsx
 │   │   ├── StatCard.tsx
-│   │   └── TableRulesForm.tsx
+│   │   ├── TableRulesForm.tsx
+│   │   └── TextField.tsx         # Shared input + keyboard dismiss
 │   ├── context/
 │   │   ├── LiveSessionContext.tsx
 │   │   └── SessionContext.tsx    # App state + CRUD actions
@@ -85,7 +88,7 @@ stacktrack/
 │   │   ├── casinoName.ts         # Case-insensitive casino name key
 │   │   ├── format.ts             # Currency / date helpers
 │   │   ├── houseEdge.ts          # Approximate HE from table rules
-│   │   ├── liveTimer.ts          # Live session elapsed helpers
+│   │   ├── liveTimer.ts          # Per-table elapsed + sum helpers
 │   │   ├── tableRanking.ts       # Absolute tier + best-in-session
 │   │   ├── tableRules.ts         # Parse / serialize table rules
 │   │   └── stats.ts              # Derived bankroll stats

@@ -8,6 +8,7 @@ import {
 const DECKS: readonly DeckCount[] = [1, 2, 4, 6, 8, 10, 12];
 const PAYOUTS: readonly BlackjackPayout[] = ['3:2', '6:5'];
 const DEALER17: readonly Dealer17[] = ['S17', 'H17'];
+const DEFAULT_MINIMUM_BET = 25;
 
 export function defaultTableRules(): TableRules {
   return {
@@ -16,6 +17,7 @@ export function defaultTableRules(): TableRules {
     dealer17: 'S17',
     doubleAfterSplit: true,
     lateSurrender: false,
+    minimumBet: DEFAULT_MINIMUM_BET,
   };
 }
 
@@ -31,7 +33,12 @@ function isDealer17(value: unknown): value is Dealer17 {
   return typeof value === 'string' && (DEALER17 as readonly string[]).includes(value);
 }
 
-export function isTableRules(value: unknown): value is TableRules {
+function isNonNegativeNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+/** Core rules fields (minimumBet may be filled during parse for legacy rows). */
+function isTableRulesCore(value: unknown): value is Omit<TableRules, 'minimumBet'> {
   if (!value || typeof value !== 'object') return false;
   const rules = value as Partial<TableRules>;
   return (
@@ -43,12 +50,32 @@ export function isTableRules(value: unknown): value is TableRules {
   );
 }
 
-/** Parse stored JSON; invalid / legacy / null → null. */
+export function isTableRules(value: unknown): value is TableRules {
+  if (!isTableRulesCore(value)) return false;
+  return isNonNegativeNumber((value as Partial<TableRules>).minimumBet);
+}
+
+function normalizeMinimumBet(value: unknown): number {
+  return isNonNegativeNumber(value) ? value : DEFAULT_MINIMUM_BET;
+}
+
+/** Parse stored JSON; invalid / null → null. Legacy rows without minimumBet get the default. */
 export function parseTableRules(json: string | null | undefined): TableRules | null {
   if (json == null || !json.trim()) return null;
   try {
     const parsed: unknown = JSON.parse(json);
-    return isTableRules(parsed) ? parsed : null;
+    if (!isTableRulesCore(parsed)) return null;
+    const core = parsed as Omit<TableRules, 'minimumBet'> & {
+      minimumBet?: unknown;
+    };
+    return {
+      decks: core.decks,
+      blackjackPayout: core.blackjackPayout,
+      dealer17: core.dealer17,
+      doubleAfterSplit: core.doubleAfterSplit,
+      lateSurrender: core.lateSurrender,
+      minimumBet: normalizeMinimumBet(core.minimumBet),
+    };
   } catch {
     return null;
   }

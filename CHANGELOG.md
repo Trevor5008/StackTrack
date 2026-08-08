@@ -14,12 +14,22 @@ App version is kept in sync in:
 
 ### Added
 
+- Per-table Play/Pause timers on live sessions (one running at a time; new tables start paused)
+- Session banner elapsed and `hoursPlayed` from the sum of table timers; per-table `elapsed_ms` snapshot on end
 - Swipe left on session cards (History / casino recent) to reveal delete
+- Swipe left on dashboard casino cards to delete (cascades sessions; discards live session there)
 - Shared `TextField` with a trailing × to dismiss the keyboard while focused
+- Table minimum bet on table rules (default `$25`); table cards title with the minimum
 
 ### Changed
 
+- Schema v4: timer columns on `active_tables`; `elapsed_ms` on `session_tables` (legacy session-level timer unused for hours)
+- Live session no longer auto-starts a clock; Play on a table starts time
 - Root layout wraps the app in `GestureHandlerRootView` for swipe gestures
+- Casino stack header shows the casino name
+- Session list cards title with date/time; casino name only in History meta
+- Long-press casino name on the casino screen to rename inline
+- Docs (`README`, `docs/schema.md`, `docs/flow.md`) for casino-first + per-table timers
 
 ## [1.0.0] - 2026-08-07
 

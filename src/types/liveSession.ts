@@ -5,7 +5,7 @@ export type ActiveSession = {
   location: string;
   startingBankroll: number;
   buyIn: number | null;
-  /** ISO timestamp when the current running segment started (ignored while paused). */
+  /** Legacy session timer fields (hours derive from table timers). */
   segmentStartedAt: string;
   accumulatedMs: number;
   isPaused: boolean;
@@ -22,6 +22,11 @@ export type ActiveTable = {
   netResult: number;
   rankPlaceholder: number | null;
   rulesJson: string | null;
+  accumulatedMs: number;
+  /** ISO start of the current running segment; null while paused. */
+  segmentStartedAt: string | null;
+  isPaused: boolean;
+  pausedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -34,6 +39,8 @@ export type SessionTable = {
   netResult: number;
   rankPlaceholder: number | null;
   rulesJson: string | null;
+  /** Snapshot of table timer elapsed when the session ended. */
+  elapsedMs: number;
   createdAt: string;
 };
 

@@ -33,6 +33,7 @@ export default function DashboardScreen() {
   const {
     activeSession,
     elapsedMs,
+    runningTableId,
     isLoading: liveLoading,
   } = useLiveSession();
 
@@ -123,7 +124,7 @@ export default function DashboardScreen() {
               <Text style={styles.liveTimer}>{formatElapsed(elapsedMs)}</Text>
               <Text style={styles.liveHint}>
                 {activeSession.location}
-                {activeSession.isPaused ? ' · Paused' : ''} — tap to continue
+                {runningTableId ? '' : ' · Paused'} — tap to continue
               </Text>
             </View>
             <Text style={styles.liveCta}>Open</Text>
@@ -153,6 +154,7 @@ export default function DashboardScreen() {
             {casinoStats.map(({ casino, profitLoss, sessionCount, hours }) => (
               <CasinoCard
                 key={casino.id}
+                casinoId={casino.id}
                 name={casino.name}
                 currency={currency}
                 profitLoss={profitLoss}

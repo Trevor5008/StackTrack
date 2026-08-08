@@ -1,9 +1,16 @@
+import { MaterialIcons } from '@expo/vector-icons';
+import { useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 
+import { useLiveSession } from '@/src/context/LiveSessionContext';
+import { useSessions } from '@/src/context/SessionContext';
+import { confirmAction } from '@/src/lib/confirm';
 import { formatCurrency, formatHours } from '@/src/lib/format';
 import { colors, radius, spacing } from '@/src/theme';
 
 type CasinoCardProps = {
+  casinoId: string;
   name: string;
   currency: string;
   profitLoss: number;
@@ -13,6 +20,7 @@ type CasinoCardProps = {
 };
 
 export function CasinoCard({
+  casinoId,
   name,
   currency,
   profitLoss,
@@ -20,7 +28,38 @@ export function CasinoCard({
   hours,
   onPress,
 }: CasinoCardProps) {
-  return (
+  const { deleteCasino } = useSessions();
+  const { activeSession, refresh: refreshLive } = useLiveSession();
+  const swipeableRef = useRef<Swipeable>(null);
+
+  const onDeletePress = () => {
+    const liveHere = activeSession?.casinoId === casinoId;
+    const sessionPart =
+      sessionCount > 0
+        ? ` and its ${sessionCount} session${sessionCount === 1 ? '' : 's'}`
+        : '';
+    const livePart = liveHere
+      ? ' Any in-progress live session at this casino will be discarded.'
+      : '';
+
+    confirmAction(
+      {
+        title: 'Delete casino?',
+        message: `This permanently removes ${name}${sessionPart}.${livePart}`,
+        confirmLabel: 'Delete',
+        destructive: true,
+      },
+      async () => {
+        swipeableRef.current?.close();
+        await deleteCasino(casinoId);
+        if (liveHere) {
+          await refreshLive();
+        }
+      },
+    );
+  };
+
+  const card = (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
@@ -50,6 +89,29 @@ export function CasinoCard({
         {formatHours(hours)}
       </Text>
     </Pressable>
+  );
+
+  return (
+    <Swipeable
+      ref={swipeableRef}
+      friction={2}
+      overshootRight={false}
+      renderRightActions={() => (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Delete casino"
+          onPress={onDeletePress}
+          style={({ pressed }) => [
+            styles.deleteAction,
+            pressed && styles.deletePressed,
+          ]}
+        >
+          <MaterialIcons name="delete-outline" size={26} color={colors.white} />
+        </Pressable>
+      )}
+    >
+      {card}
+    </Swipeable>
   );
 }
 
@@ -89,5 +151,17 @@ const styles = StyleSheet.create({
   meta: {
     color: colors.textMuted,
     fontSize: 13,
+  },
+  deleteAction: {
+    alignItems: 'center',
+    backgroundColor: colors.negative,
+    borderRadius: radius.md,
+    justifyContent: 'center',
+    marginLeft: spacing.sm,
+    minWidth: 72,
+    paddingHorizontal: spacing.md,
+  },
+  deletePressed: {
+    opacity: 0.85,
   },
 });

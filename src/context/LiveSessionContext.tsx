@@ -8,11 +8,14 @@ import {
   useState,
 } from 'react';
 
-import {
-  computeElapsedMs,
-  msToHoursPlayed,
-} from '@/src/lib/liveTimer';
 import { useSessions } from '@/src/context/SessionContext';
+import {
+  assertCanPlayTable,
+  computeElapsedMs,
+  findRunningTable,
+  msToHoursPlayed,
+  sumTableElapsedMs,
+} from '@/src/lib/liveTimer';
 import {
   addActiveTable,
   clearActiveSession,
@@ -20,7 +23,6 @@ import {
   loadActiveSession,
   loadActiveTables,
   startActiveSession,
-  updateActiveSession,
   updateActiveTable,
 } from '@/src/storage/liveSessionStore';
 import {
@@ -37,11 +39,16 @@ type LiveSessionContextValue = {
   tables: ActiveTable[];
   elapsedMs: number;
   cumulativePnL: number;
+  runningTableId: string | null;
   isLoading: boolean;
   error: string | null;
   startSession: (input: StartLiveSessionInput) => Promise<ActiveSession>;
+  /** Pause the currently running table (banner control). */
   pause: () => Promise<void>;
+  /** Resume the last paused table when exactly one was running before — uses play on none; prefer playTable. */
   resume: () => Promise<void>;
+  playTable: (id: string) => Promise<void>;
+  pauseTable: (id: string) => Promise<void>;
   addTable: (input?: AddTableInput) => Promise<ActiveTable>;
   updateTable: (
     id: string,
@@ -52,10 +59,27 @@ type LiveSessionContextValue = {
   refresh: () => Promise<void>;
 };
 
-// Live session context
 const LiveSessionContext = createContext<LiveSessionContextValue | null>(null);
 
-// Live session provider component
+function freezeTable(table: ActiveTable, nowMs: number): ActiveTable {
+  if (table.isPaused) return table;
+  const accumulated = computeElapsedMs({
+    accumulatedMs: table.accumulatedMs,
+    isPaused: false,
+    segmentStartedAt: table.segmentStartedAt,
+    nowMs,
+  });
+  const nowIso = new Date(nowMs).toISOString();
+  return {
+    ...table,
+    accumulatedMs: accumulated,
+    isPaused: true,
+    pausedAt: nowIso,
+    segmentStartedAt: null,
+    updatedAt: nowIso,
+  };
+}
+
 export function LiveSessionProvider({ children }: PropsWithChildren) {
   const { addSession, settings } = useSessions();
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(
@@ -65,54 +89,43 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
   const [elapsedMs, setElapsedMs] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** Table to resume from banner when all paused after a pause. */
+  const [lastPausedTableId, setLastPausedTableId] = useState<string | null>(
+    null,
+  );
 
-  // Refresh the live session
   const refresh = useCallback(async () => {
     const session = await loadActiveSession();
     setActiveSession(session);
     if (session) {
       const loaded = await loadActiveTables(session.id);
       setTables(loaded);
-      setElapsedMs(
-        computeElapsedMs({
-          accumulatedMs: session.accumulatedMs,
-          isPaused: session.isPaused,
-          segmentStartedAt: session.segmentStartedAt,
-        }),
-      );
+      setElapsedMs(sumTableElapsedMs(loaded));
     } else {
       setTables([]);
       setElapsedMs(0);
     }
   }, []);
 
-  // Refresh the live session on mount
   useEffect(() => {
     refresh()
       .catch(() => setError('Could not load the live session.'))
       .finally(() => setIsLoading(false));
   }, [refresh]);
 
-  // Update the elapsed time every second
   useEffect(() => {
-    if (!activeSession || activeSession.isPaused) return;
+    const anyRunning = tables.some((table) => !table.isPaused);
+    if (!anyRunning) {
+      setElapsedMs(sumTableElapsedMs(tables));
+      return;
+    }
 
-    const tick = () => {
-      setElapsedMs(
-        computeElapsedMs({
-          accumulatedMs: activeSession.accumulatedMs,
-          isPaused: activeSession.isPaused,
-          segmentStartedAt: activeSession.segmentStartedAt,
-        }),
-      );
-    };
-
+    const tick = () => setElapsedMs(sumTableElapsedMs(tables));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [activeSession]);
+  }, [tables]);
 
-  // Start a new live session
   const startSession = useCallback(
     async (input: StartLiveSessionInput) => {
       const session = await startActiveSession({
@@ -123,50 +136,76 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
       setActiveSession(session);
       setTables([]);
       setElapsedMs(0);
+      setLastPausedTableId(null);
       setError(null);
       return session;
     },
     [settings.startingBankroll],
   );
 
-  // Pause the live session
+  const pauseTable = useCallback(
+    async (id: string) => {
+      const current = tables.find((table) => table.id === id);
+      if (!current || current.isPaused) return;
+      const nowMs = Date.now();
+      const next = freezeTable(current, nowMs);
+      await updateActiveTable(next);
+      setTables((prev) => prev.map((table) => (table.id === id ? next : table)));
+      setLastPausedTableId(id);
+      setElapsedMs(sumTableElapsedMs(
+        tables.map((table) => (table.id === id ? next : table)),
+        nowMs,
+      ));
+      setError(null);
+    },
+    [tables],
+  );
+
+  const playTable = useCallback(
+    async (id: string) => {
+      assertCanPlayTable(tables, id);
+      const current = tables.find((table) => table.id === id);
+      if (!current) return;
+      if (!current.isPaused) return;
+
+      const nowIso = new Date().toISOString();
+      const next: ActiveTable = {
+        ...current,
+        isPaused: false,
+        pausedAt: null,
+        segmentStartedAt: nowIso,
+        updatedAt: nowIso,
+      };
+      await updateActiveTable(next);
+      setTables((prev) => prev.map((table) => (table.id === id ? next : table)));
+      setLastPausedTableId(null);
+      setError(null);
+    },
+    [tables],
+  );
+
   const pause = useCallback(async () => {
-    if (!activeSession || activeSession.isPaused) return;
-    const now = Date.now();
-    const accumulated = computeElapsedMs({
-      accumulatedMs: activeSession.accumulatedMs,
-      isPaused: false,
-      segmentStartedAt: activeSession.segmentStartedAt,
-      nowMs: now,
-    });
-    const next: ActiveSession = {
-      ...activeSession,
-      accumulatedMs: accumulated,
-      isPaused: true,
-      pausedAt: new Date(now).toISOString(),
-      updatedAt: new Date(now).toISOString(),
-    };
-    await updateActiveSession(next);
-    setActiveSession(next);
-    setElapsedMs(accumulated);
-  }, [activeSession]);
+    const running = findRunningTable(tables);
+    if (!running) return;
+    await pauseTable(running.id);
+  }, [tables, pauseTable]);
 
-  // Resume the live session
   const resume = useCallback(async () => {
-    if (!activeSession || !activeSession.isPaused) return;
-    const nowIso = new Date().toISOString();
-    const next: ActiveSession = {
-      ...activeSession,
-      isPaused: false,
-      pausedAt: null,
-      segmentStartedAt: nowIso,
-      updatedAt: nowIso,
-    };
-    await updateActiveSession(next);
-    setActiveSession(next);
-  }, [activeSession]);
+    if (findRunningTable(tables)) return;
+    const targetId =
+      lastPausedTableId && tables.some((t) => t.id === lastPausedTableId)
+        ? lastPausedTableId
+        : tables[0]?.id;
+    if (!targetId) return;
+    try {
+      await playTable(targetId);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Could not resume table timer.',
+      );
+    }
+  }, [tables, lastPausedTableId, playTable]);
 
-  // Add a new table to the live session
   const addTable = useCallback(
     async (input: AddTableInput = { name: '' }) => {
       if (!activeSession) {
@@ -179,7 +218,6 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
     [activeSession],
   );
 
-  // Update a table in the live session
   const updateTable = useCallback(
     async (
       id: string,
@@ -199,27 +237,30 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
     [tables],
   );
 
-  // Discard the live session
   const discardSession = useCallback(async () => {
     await clearActiveSession();
     setActiveSession(null);
     setTables([]);
     setElapsedMs(0);
+    setLastPausedTableId(null);
     setError(null);
   }, []);
 
-  // End the live session
   const endSession = useCallback(
     async (input: EndLiveSessionInput) => {
       if (!activeSession) {
         throw new Error('No live session to end.');
       }
 
-      const finalElapsed = computeElapsedMs({
-        accumulatedMs: activeSession.accumulatedMs,
-        isPaused: activeSession.isPaused,
-        segmentStartedAt: activeSession.segmentStartedAt,
-      });
+      const nowMs = Date.now();
+      const frozen = tables.map((table) => freezeTable(table, nowMs));
+      for (let i = 0; i < tables.length; i += 1) {
+        if (!tables[i].isPaused) {
+          await updateActiveTable(frozen[i]);
+        }
+      }
+
+      const finalElapsed = sumTableElapsedMs(frozen, nowMs);
       const hoursPlayed = Math.max(0.01, msToHoursPlayed(finalElapsed));
       const buyIn =
         Number.isFinite(input.buyIn) && input.buyIn >= 0
@@ -246,35 +287,42 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
         notes: undefined,
       });
 
-      await copyTablesToSession(session.id, tables);
+      await copyTablesToSession(session.id, frozen);
       await clearActiveSession();
       setActiveSession(null);
       setTables([]);
       setElapsedMs(0);
+      setLastPausedTableId(null);
       setError(null);
       return session;
     },
     [activeSession, addSession, tables],
   );
 
-  // Calculate the cumulative PnL of the live session
   const cumulativePnL = useMemo(
     () => tables.reduce((sum, table) => sum + table.netResult, 0),
     [tables],
   );
 
-  // Live session context value
+  const runningTableId = useMemo(
+    () => findRunningTable(tables)?.id ?? null,
+    [tables],
+  );
+
   const value = useMemo(
     () => ({
       activeSession,
       tables,
       elapsedMs,
       cumulativePnL,
+      runningTableId,
       isLoading,
       error,
       startSession,
       pause,
       resume,
+      playTable,
+      pauseTable,
       addTable,
       updateTable,
       endSession,
@@ -286,11 +334,14 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
       tables,
       elapsedMs,
       cumulativePnL,
+      runningTableId,
       isLoading,
       error,
       startSession,
       pause,
       resume,
+      playTable,
+      pauseTable,
       addTable,
       updateTable,
       endSession,
@@ -306,7 +357,6 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
   );
 }
 
-// Live session hook
 export function useLiveSession(): LiveSessionContextValue {
   const context = useContext(LiveSessionContext);
   if (!context) {

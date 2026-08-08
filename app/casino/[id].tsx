@@ -1,11 +1,13 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 
@@ -28,19 +30,30 @@ import { Casino } from '@/src/types/casino';
 import { colors, radius, spacing } from '@/src/theme';
 
 export default function CasinoScreen() {
+  const navigation = useNavigation();
   const params = useLocalSearchParams<{ id: string }>();
   const casinoId = Array.isArray(params.id) ? params.id[0] : params.id;
-  const { sessions, casinos, settings, isLoading } = useSessions();
+  const { sessions, casinos, settings, isLoading, renameCasino } =
+    useSessions();
   const {
     activeSession,
     isLoading: liveLoading,
     startSession,
+    refresh: refreshLive,
   } = useLiveSession();
   const [fetchedCasino, setFetchedCasino] = useState<Casino | null>(null);
   const [lookupDone, setLookupDone] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
 
   const casinoFromContext = casinos.find((item) => item.id === casinoId);
   const casino = casinoFromContext ?? fetchedCasino;
+
+  useLayoutEffect(() => {
+    navigation.setOptions({ title: casino?.name ?? 'Casino' });
+  }, [navigation, casino?.name]);
 
   useEffect(() => {
     if (!casinoId || casinoFromContext) {
@@ -94,6 +107,47 @@ export default function CasinoScreen() {
   const record = winLossRecord(casinoSessions);
   const liveHere = activeSession?.casinoId === casino.id;
 
+  const beginRename = () => {
+    setDraftName(casino.name);
+    setRenameError(null);
+    setEditingName(true);
+  };
+
+  const cancelRename = () => {
+    setEditingName(false);
+    setDraftName('');
+    setRenameError(null);
+  };
+
+  const saveRename = async () => {
+    if (renaming) return;
+    const trimmed = draftName.trim();
+    if (!trimmed || trimmed === casino.name) {
+      cancelRename();
+      return;
+    }
+
+    setRenaming(true);
+    setRenameError(null);
+    try {
+      await renameCasino(casino.id, trimmed);
+      setFetchedCasino((current) =>
+        current && current.id === casino.id
+          ? { ...current, name: trimmed }
+          : current,
+      );
+      await refreshLive();
+      setEditingName(false);
+      setDraftName('');
+    } catch (err) {
+      setRenameError(
+        err instanceof Error ? err.message : 'Could not rename casino.',
+      );
+    } finally {
+      setRenaming(false);
+    }
+  };
+
   const onStartLive = async () => {
     if (activeSession && !liveHere) {
       router.push('/live');
@@ -115,11 +169,49 @@ export default function CasinoScreen() {
     <ScrollView
       contentContainerStyle={styles.content}
       style={styles.screen}
+      keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
       <View>
         <Text style={styles.eyebrow}>CASINO</Text>
-        <Text style={styles.heading}>{casino.name}</Text>
+        {editingName ? (
+          <View style={styles.renameBlock}>
+            <TextInput
+              autoFocus
+              value={draftName}
+              onChangeText={(value) => {
+                setDraftName(value);
+                if (renameError) setRenameError(null);
+              }}
+              onSubmitEditing={() => void saveRename()}
+              onBlur={() => {
+                if (!renaming) void saveRename();
+              }}
+              returnKeyType="done"
+              editable={!renaming}
+              style={styles.headingInput}
+              placeholderTextColor={colors.textMuted}
+              accessibilityLabel="Casino name"
+            />
+            {renameError ? (
+              <Text style={styles.renameError}>{renameError}</Text>
+            ) : (
+              <Text style={styles.renameHint}>
+                Press done to save · clear to cancel
+              </Text>
+            )}
+          </View>
+        ) : (
+          <Pressable
+            onLongPress={beginRename}
+            delayLongPress={350}
+            accessibilityRole="button"
+            accessibilityHint="Long press to rename"
+            style={({ pressed }) => pressed && styles.pressed}
+          >
+            <Text style={styles.heading}>{casino.name}</Text>
+          </Pressable>
+        )}
       </View>
 
       {activeSession ? (
@@ -192,6 +284,7 @@ export default function CasinoScreen() {
                 currency={currency}
                 key={session.id}
                 session={session}
+                showCasinoName={false}
               />
             ))}
           </View>
@@ -238,6 +331,29 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 28,
     fontWeight: '800',
+  },
+  renameBlock: {
+    gap: spacing.xs,
+  },
+  headingInput: {
+    backgroundColor: colors.input,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    color: colors.text,
+    fontSize: 28,
+    fontWeight: '800',
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  renameHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  renameError: {
+    color: colors.negative,
+    fontSize: 12,
   },
   startButton: {
     alignItems: 'center',

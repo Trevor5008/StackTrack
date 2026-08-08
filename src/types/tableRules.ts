@@ -8,6 +8,8 @@ export type TableRules = {
   dealer17: Dealer17;
   doubleAfterSplit: boolean;
   lateSurrender: boolean;
+  /** Table minimum bet amount (display currency units). */
+  minimumBet: number;
 };
 
 export const DECK_OPTIONS: DeckCount[] = [1, 2, 4, 6, 8, 10, 12];

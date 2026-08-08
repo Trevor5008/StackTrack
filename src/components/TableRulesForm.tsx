@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { TextField } from '@/src/components/TextField';
 import { colors, radius, spacing } from '@/src/theme';
 import {
   BlackjackPayout,
@@ -93,6 +94,23 @@ export function TableRulesForm({
   return (
     <View style={styles.form}>
       <Text style={styles.title}>Table rules</Text>
+
+      <TextField
+        label="Table minimum"
+        value={String(rules.minimumBet)}
+        keyboardType="decimal-pad"
+        placeholder="25"
+        onChangeText={(value) => {
+          const parsed = Number(value);
+          if (value.trim() === '') {
+            setRules((prev) => ({ ...prev, minimumBet: 0 }));
+            return;
+          }
+          if (Number.isFinite(parsed) && parsed >= 0) {
+            setRules((prev) => ({ ...prev, minimumBet: parsed }));
+          }
+        }}
+      />
 
       <ChoiceRow<DeckCount>
         label="Decks"

@@ -6,16 +6,62 @@ export function createId(): string {
 export function computeElapsedMs(input: {
   accumulatedMs: number;
   isPaused: boolean;
-  segmentStartedAt: string;
+  segmentStartedAt: string | null;
   nowMs?: number;
 }): number {
   const now = input.nowMs ?? Date.now();
   if (input.isPaused) return Math.max(0, input.accumulatedMs);
+  if (!input.segmentStartedAt) return Math.max(0, input.accumulatedMs);
   const segmentStart = new Date(input.segmentStartedAt).getTime();
   const running = Number.isFinite(segmentStart)
     ? Math.max(0, now - segmentStart)
     : 0;
   return Math.max(0, input.accumulatedMs + running);
+}
+
+export type TableTimerLike = {
+  id: string;
+  accumulatedMs: number;
+  isPaused: boolean;
+  segmentStartedAt: string | null;
+};
+
+/** Sum of elapsed ms across tables. */
+export function sumTableElapsedMs(
+  tables: TableTimerLike[],
+  nowMs?: number,
+): number {
+  return tables.reduce(
+    (total, table) =>
+      total +
+      computeElapsedMs({
+        accumulatedMs: table.accumulatedMs,
+        isPaused: table.isPaused,
+        segmentStartedAt: table.segmentStartedAt,
+        nowMs,
+      }),
+    0,
+  );
+}
+
+/** The single running table, if any. */
+export function findRunningTable<T extends TableTimerLike>(
+  tables: T[],
+): T | null {
+  return tables.find((table) => !table.isPaused) ?? null;
+}
+
+/**
+ * Throws if another table is already running when trying to play `playId`.
+ */
+export function assertCanPlayTable(
+  tables: TableTimerLike[],
+  playId: string,
+): void {
+  const running = findRunningTable(tables);
+  if (running && running.id !== playId) {
+    throw new Error('Pause the current table before playing another.');
+  }
 }
 
 // Convert elapsed ms to hours played
