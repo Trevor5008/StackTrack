@@ -36,9 +36,10 @@ After pulling SQLite changes, restart Metro so `metro.config.js`
 - Local-only session storage with **expo-sqlite**
 - Validated load/save and one-time AsyncStorage → SQLite migration
 - **Casino-first dashboard**: casino cards with scoped stats + Add casino
-- Casino screen with metrics and **Start live session**
-- **Live session shell**: per-table Play / Pause (one timer at a time); end with buy-in + cash-out (no location prompt)
-- Session hours from the **sum of table timers**; each table’s elapsed is snapshotted on end
+- Casino screen with metrics and **Start live session** (budget + risk tolerance ≤ bankroll)
+- **Live session shell**: bankroll → budget → stake; Play sets betting unit + stake; Pause ending chips; end is confirmation only
+- **Risk of Ruin** (basic strategy heuristic): unknown until rules + unit; non-viable when RoR > tolerance
+- Session hours from the **sum of table timers**; cash-out derived from remaining budget
 - Addable table cards with editable rules, minimum bet, and absolute house-edge rank badges
 - Add, view, edit, and delete completed sessions (casino picker on forms)
 - Swipe-to-delete on casino and session cards
@@ -89,6 +90,8 @@ stacktrack/
 │   │   ├── format.ts             # Currency / date helpers
 │   │   ├── houseEdge.ts          # Approximate HE from table rules
 │   │   ├── liveTimer.ts          # Per-table elapsed + sum helpers
+│   │   ├── riskOfRuin.ts         # BS RoR heuristic + risk presets
+│   │   ├── sessionBudget.ts      # Budget / stake / remaining helpers
 │   │   ├── tableRanking.ts       # Absolute tier + best-in-session
 │   │   ├── tableRules.ts         # Parse / serialize table rules
 │   │   └── stats.ts              # Derived bankroll stats

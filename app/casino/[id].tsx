@@ -3,6 +3,9 @@ import { useNavigation } from '@react-navigation/native';
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,9 +16,14 @@ import {
 
 import { SessionListItem } from '@/src/components/SessionListItem';
 import { StatCard } from '@/src/components/StatCard';
+import { TextField } from '@/src/components/TextField';
 import { useLiveSession } from '@/src/context/LiveSessionContext';
 import { useSessions } from '@/src/context/SessionContext';
 import { formatCurrency, formatHours } from '@/src/lib/format';
+import {
+  DEFAULT_RISK_TOLERANCE,
+  RISK_TOLERANCE_PRESETS,
+} from '@/src/lib/riskOfRuin';
 import {
   currentBankroll,
   hourlyRate,
@@ -47,6 +55,11 @@ export default function CasinoScreen() {
   const [draftName, setDraftName] = useState('');
   const [renameError, setRenameError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [budgetInput, setBudgetInput] = useState('');
+  const [riskTolerance, setRiskTolerance] = useState<number>(5);
+  const [startError, setStartError] = useState<string | null>(null);
+  const [savingStart, setSavingStart] = useState(false);
 
   const casinoFromContext = casinos.find((item) => item.id === casinoId);
   const casino = casinoFromContext ?? fetchedCasino;
@@ -81,6 +94,11 @@ export default function CasinoScreen() {
   const casinoSessions = useMemo(
     () => (casinoId ? sessionsForCasino(sessions, casinoId) : []),
     [sessions, casinoId],
+  );
+
+  const bankroll = useMemo(
+    () => currentBankroll(settings.startingBankroll, sessions),
+    [settings.startingBankroll, sessions],
   );
 
   if (isLoading || liveLoading || (!casino && !lookupDone)) {
@@ -148,24 +166,40 @@ export default function CasinoScreen() {
     }
   };
 
-  const onStartLive = async () => {
-    if (activeSession && !liveHere) {
+  const openStartModal = () => {
+    if (activeSession) {
       router.push('/live');
       return;
     }
-    if (!activeSession) {
+    setBudgetInput(bankroll > 0 ? String(bankroll) : '');
+    setRiskTolerance(DEFAULT_RISK_TOLERANCE);
+    setStartError(null);
+    setStarting(true);
+  };
+
+  const onConfirmStart = async () => {
+    setSavingStart(true);
+    setStartError(null);
+    try {
       await startSession({
         casinoId: casino.id,
-        startingBankroll: currentBankroll(
-          settings.startingBankroll,
-          sessions,
-        ),
+        startingBankroll: bankroll,
+        budget: Number(budgetInput),
+        riskTolerance,
       });
+      setStarting(false);
+      router.push('/live');
+    } catch (err) {
+      setStartError(
+        err instanceof Error ? err.message : 'Could not start the session.',
+      );
+    } finally {
+      setSavingStart(false);
     }
-    router.push('/live');
   };
 
   return (
+    <>
     <ScrollView
       contentContainerStyle={styles.content}
       style={styles.screen}
@@ -233,7 +267,7 @@ export default function CasinoScreen() {
         </Pressable>
       ) : (
         <Pressable
-          onPress={() => void onStartLive()}
+          onPress={openStartModal}
           style={({ pressed }) => [
             styles.startButton,
             pressed && styles.pressed,
@@ -291,6 +325,81 @@ export default function CasinoScreen() {
         )}
       </View>
     </ScrollView>
+
+    <Modal
+      visible={starting}
+      animationType="slide"
+      transparent
+      onRequestClose={() => setStarting(false)}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.modalBackdrop}
+      >
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>Start session</Text>
+          <Text style={styles.modalHint}>
+            Available bankroll: {formatCurrency(bankroll, currency)}
+          </Text>
+          <TextField
+            label="Session budget"
+            keyboardType="numeric"
+            value={budgetInput}
+            onChangeText={setBudgetInput}
+          />
+          <Text style={styles.modalHint}>Risk tolerance (max RoR)</Text>
+          <View style={styles.toleranceRow}>
+            {RISK_TOLERANCE_PRESETS.map((preset) => {
+              const selected = riskTolerance === preset;
+              return (
+                <Pressable
+                  key={preset}
+                  onPress={() => setRiskTolerance(preset)}
+                  style={[
+                    styles.toleranceChip,
+                    selected && styles.toleranceChipSelected,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.toleranceChipText,
+                      selected && styles.toleranceChipTextSelected,
+                    ]}
+                  >
+                    {preset}%
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          {startError ? (
+            <Text style={styles.startError}>{startError}</Text>
+          ) : null}
+          <View style={styles.modalActions}>
+            <Pressable
+              onPress={() => setStarting(false)}
+              style={styles.secondaryButton}
+            >
+              <Text style={styles.secondaryButtonText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void onConfirmStart()}
+              disabled={savingStart}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                pressed && styles.pressed,
+                savingStart && styles.disabled,
+              ]}
+            >
+              <Text style={styles.primaryButtonText}>
+                {savingStart ? 'Starting…' : 'Start'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+    </>
   );
 }
 
@@ -407,5 +516,88 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.8,
+  },
+  modalBackdrop: {
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    gap: spacing.sm,
+    padding: spacing.lg,
+    paddingBottom: spacing.xl,
+  },
+  modalTitle: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  modalHint: {
+    color: colors.textMuted,
+    marginBottom: spacing.xs,
+  },
+  toleranceRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  toleranceChip: {
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    minWidth: 52,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  toleranceChipSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  toleranceChipText: {
+    color: colors.text,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  toleranceChipTextSelected: {
+    color: colors.background,
+  },
+  startError: {
+    color: colors.negative,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  primaryButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  primaryButtonText: {
+    color: colors.background,
+    fontWeight: '800',
+  },
+  secondaryButton: {
+    alignItems: 'center',
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  secondaryButtonText: {
+    color: colors.text,
+    fontWeight: '700',
+  },
+  disabled: {
+    opacity: 0.6,
   },
 });

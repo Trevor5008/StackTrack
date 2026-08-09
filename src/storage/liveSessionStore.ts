@@ -1,5 +1,10 @@
 import { getDb } from '@/src/storage/db';
 import { computeElapsedMs, createId } from '@/src/lib/liveTimer';
+import {
+  assertRiskTolerance,
+  DEFAULT_RISK_TOLERANCE,
+} from '@/src/lib/riskOfRuin';
+import { assertBudget } from '@/src/lib/sessionBudget';
 import { getCasino } from '@/src/storage/casinoStore';
 import {
   ActiveSession,
@@ -15,6 +20,8 @@ type ActiveSessionRow = {
   location: string;
   starting_bankroll: number;
   buy_in: number | null;
+  remaining_budget: number | null;
+  risk_tolerance: number | null;
   segment_started_at: string;
   accumulated_ms: number;
   is_paused: number;
@@ -29,6 +36,8 @@ type ActiveTableRow = {
   name: string;
   sort_order: number;
   net_result: number;
+  stake: number | null;
+  betting_unit: number | null;
   rank_placeholder: number | null;
   rules_json: string | null;
   accumulated_ms: number | null;
@@ -48,16 +57,20 @@ type SessionTableRow = {
   rank_placeholder: number | null;
   rules_json: string | null;
   elapsed_ms: number | null;
+  betting_unit: number | null;
   created_at: string;
 };
 
 function activeSessionFromRow(row: ActiveSessionRow): ActiveSession {
+  const budget = row.buy_in ?? row.starting_bankroll;
   return {
     id: row.id,
     casinoId: row.casino_id ?? '',
     location: row.location,
     startingBankroll: row.starting_bankroll,
-    buyIn: row.buy_in,
+    buyIn: budget,
+    remainingBudget: row.remaining_budget ?? budget,
+    riskTolerance: row.risk_tolerance ?? DEFAULT_RISK_TOLERANCE,
     segmentStartedAt: row.segment_started_at,
     accumulatedMs: row.accumulated_ms,
     isPaused: row.is_paused === 1,
@@ -74,6 +87,8 @@ function activeTableFromRow(row: ActiveTableRow): ActiveTable {
     name: row.name,
     sortOrder: row.sort_order,
     netResult: row.net_result,
+    stake: row.stake ?? 0,
+    bettingUnit: row.betting_unit,
     rankPlaceholder: row.rank_placeholder,
     rulesJson: row.rules_json,
     accumulatedMs: row.accumulated_ms ?? 0,
@@ -95,6 +110,7 @@ function sessionTableFromRow(row: SessionTableRow): SessionTable {
     rankPlaceholder: row.rank_placeholder,
     rulesJson: row.rules_json,
     elapsedMs: row.elapsed_ms ?? 0,
+    bettingUnit: row.betting_unit,
     createdAt: row.created_at,
   };
 }
@@ -102,8 +118,9 @@ function sessionTableFromRow(row: SessionTableRow): SessionTable {
 export async function loadActiveSession(): Promise<ActiveSession | null> {
   const db = await getDb();
   const row = await db.getFirstAsync<ActiveSessionRow>(
-    `SELECT id, casino_id, location, starting_bankroll, buy_in, segment_started_at,
-            accumulated_ms, is_paused, paused_at, created_at, updated_at
+    `SELECT id, casino_id, location, starting_bankroll, buy_in, remaining_budget,
+            risk_tolerance, segment_started_at, accumulated_ms, is_paused,
+            paused_at, created_at, updated_at
      FROM active_sessions
      LIMIT 1`,
   );
@@ -115,8 +132,8 @@ export async function loadActiveTables(
 ): Promise<ActiveTable[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<ActiveTableRow>(
-    `SELECT id, active_session_id, name, sort_order, net_result,
-            rank_placeholder, rules_json,
+    `SELECT id, active_session_id, name, sort_order, net_result, stake,
+            betting_unit, rank_placeholder, rules_json,
             accumulated_ms, segment_started_at, is_paused, paused_at,
             created_at, updated_at
      FROM active_tables
@@ -141,13 +158,18 @@ export async function startActiveSession(
     throw new Error('Select a casino before starting a session.');
   }
 
+  assertBudget(input.budget, input.startingBankroll);
+  const riskTolerance = assertRiskTolerance(input.riskTolerance);
+
   const now = new Date().toISOString();
   const session: ActiveSession = {
     id: createId(),
     casinoId: casino.id,
     location: casino.name,
     startingBankroll: input.startingBankroll,
-    buyIn: null,
+    buyIn: input.budget,
+    remainingBudget: input.budget,
+    riskTolerance,
     segmentStartedAt: now,
     accumulatedMs: 0,
     isPaused: true,
@@ -158,15 +180,18 @@ export async function startActiveSession(
 
   await db.runAsync(
     `INSERT INTO active_sessions (
-      id, casino_id, location, starting_bankroll, buy_in, segment_started_at,
-      accumulated_ms, is_paused, paused_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      id, casino_id, location, starting_bankroll, buy_in, remaining_budget,
+      risk_tolerance, segment_started_at, accumulated_ms, is_paused, paused_at,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       session.id,
       session.casinoId,
       session.location,
       session.startingBankroll,
       session.buyIn,
+      session.remainingBudget,
+      session.riskTolerance,
       session.segmentStartedAt,
       session.accumulatedMs,
       1,
@@ -189,6 +214,8 @@ export async function updateActiveSession(
       location = ?,
       starting_bankroll = ?,
       buy_in = ?,
+      remaining_budget = ?,
+      risk_tolerance = ?,
       segment_started_at = ?,
       accumulated_ms = ?,
       is_paused = ?,
@@ -200,6 +227,8 @@ export async function updateActiveSession(
       session.location,
       session.startingBankroll,
       session.buyIn,
+      session.remainingBudget,
+      session.riskTolerance,
       session.segmentStartedAt,
       session.accumulatedMs,
       session.isPaused ? 1 : 0,
@@ -223,6 +252,8 @@ export async function addActiveTable(
     name: input.name.trim() || `Table ${existing.length + 1}`,
     sortOrder: existing.length,
     netResult: input.netResult ?? 0,
+    stake: 0,
+    bettingUnit: null,
     rankPlaceholder: null,
     rulesJson: null,
     accumulatedMs: 0,
@@ -235,17 +266,19 @@ export async function addActiveTable(
 
   await db.runAsync(
     `INSERT INTO active_tables (
-      id, active_session_id, name, sort_order, net_result,
+      id, active_session_id, name, sort_order, net_result, stake, betting_unit,
       rank_placeholder, rules_json,
       accumulated_ms, segment_started_at, is_paused, paused_at,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       table.id,
       table.activeSessionId,
       table.name,
       table.sortOrder,
       table.netResult,
+      table.stake,
+      table.bettingUnit,
       table.rankPlaceholder,
       table.rulesJson,
       table.accumulatedMs,
@@ -267,6 +300,8 @@ export async function updateActiveTable(table: ActiveTable): Promise<void> {
       name = ?,
       sort_order = ?,
       net_result = ?,
+      stake = ?,
+      betting_unit = ?,
       rank_placeholder = ?,
       rules_json = ?,
       accumulated_ms = ?,
@@ -279,6 +314,8 @@ export async function updateActiveTable(table: ActiveTable): Promise<void> {
       table.name,
       table.sortOrder,
       table.netResult,
+      table.stake,
+      table.bettingUnit,
       table.rankPlaceholder,
       table.rulesJson,
       table.accumulatedMs,
@@ -320,6 +357,7 @@ export async function copyTablesToSession(
       segmentStartedAt: table.segmentStartedAt,
       nowMs,
     }),
+    bettingUnit: table.bettingUnit,
     createdAt: now,
   }));
 
@@ -328,8 +366,8 @@ export async function copyTablesToSession(
       await db.runAsync(
         `INSERT INTO session_tables (
           id, session_id, name, sort_order, net_result,
-          rank_placeholder, rules_json, elapsed_ms, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          rank_placeholder, rules_json, elapsed_ms, betting_unit, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           table.id,
           table.sessionId,
@@ -339,6 +377,7 @@ export async function copyTablesToSession(
           table.rankPlaceholder,
           table.rulesJson,
           table.elapsedMs,
+          table.bettingUnit,
           table.createdAt,
         ],
       );
@@ -354,7 +393,7 @@ export async function loadSessionTables(
   const db = await getDb();
   const rows = await db.getAllAsync<SessionTableRow>(
     `SELECT id, session_id, name, sort_order, net_result,
-            rank_placeholder, rules_json, elapsed_ms, created_at
+            rank_placeholder, rules_json, elapsed_ms, betting_unit, created_at
      FROM session_tables
      WHERE session_id = ?
      ORDER BY sort_order ASC, created_at ASC`,
@@ -367,7 +406,7 @@ export async function loadAllSessionTables(): Promise<SessionTableRow[]> {
   const db = await getDb();
   return db.getAllAsync<SessionTableRow>(
     `SELECT id, session_id, name, sort_order, net_result,
-            rank_placeholder, rules_json, elapsed_ms, created_at
+            rank_placeholder, rules_json, elapsed_ms, betting_unit, created_at
      FROM session_tables`,
   );
 }
@@ -382,8 +421,8 @@ export async function restoreSessionTables(
       await db.runAsync(
         `INSERT INTO session_tables (
           id, session_id, name, sort_order, net_result,
-          rank_placeholder, rules_json, elapsed_ms, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          rank_placeholder, rules_json, elapsed_ms, betting_unit, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           row.id,
           row.session_id,
@@ -393,6 +432,7 @@ export async function restoreSessionTables(
           row.rank_placeholder,
           row.rules_json,
           row.elapsed_ms ?? 0,
+          row.betting_unit,
           row.created_at,
         ],
       );

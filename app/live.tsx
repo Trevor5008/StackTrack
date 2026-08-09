@@ -12,7 +12,6 @@ import {
   View,
 } from 'react-native';
 
-// Live session screen component
 import { RankBadge } from '@/src/components/RankBadge';
 import { TableRulesForm } from '@/src/components/TableRulesForm';
 import { TextField } from '@/src/components/TextField';
@@ -26,6 +25,11 @@ import {
   msToHoursPlayed,
 } from '@/src/lib/liveTimer';
 import {
+  estimateBasicStrategyRoR,
+  formatRoR,
+  isTableViable,
+} from '@/src/lib/riskOfRuin';
+import {
   defaultTableRules,
   formatTableRulesSummary,
   parseTableRules,
@@ -35,7 +39,11 @@ import { rankTables } from '@/src/lib/tableRanking';
 import { colors, radius, spacing } from '@/src/theme';
 import { TableRules } from '@/src/types/tableRules';
 
-// Live session screen component
+type MoneyModal =
+  | { kind: 'stake'; tableId: string }
+  | { kind: 'results'; tableId: string }
+  | null;
+
 export default function LiveSessionScreen() {
   const { settings } = useSessions();
   const {
@@ -43,11 +51,10 @@ export default function LiveSessionScreen() {
     tables,
     elapsedMs,
     cumulativePnL,
+    remainingBudget,
     runningTableId,
     isLoading,
     error: liveError,
-    pause,
-    resume,
     playTable,
     pauseTable,
     addTable,
@@ -57,8 +64,9 @@ export default function LiveSessionScreen() {
   } = useLiveSession();
 
   const [ending, setEnding] = useState(false);
-  const [buyIn, setBuyIn] = useState('');
-  const [cashOut, setCashOut] = useState('');
+  const [moneyModal, setMoneyModal] = useState<MoneyModal>(null);
+  const [moneyAmount, setMoneyAmount] = useState('');
+  const [bettingUnitInput, setBettingUnitInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [tableError, setTableError] = useState<string | null>(null);
@@ -76,8 +84,31 @@ export default function LiveSessionScreen() {
   const tableRanks = useMemo(() => rankTables(tables), [tables]);
   const runningTable = tables.find((table) => table.id === runningTableId);
   const allPaused = !runningTableId;
+  const budget = activeSession?.buyIn ?? 0;
+  const sessionNet = remainingBudget - budget;
+  const moneyTable = moneyModal
+    ? tables.find((table) => table.id === moneyModal.tableId)
+    : null;
+  const moneyTableRules = moneyTable
+    ? parseTableRules(moneyTable.rulesJson)
+    : null;
 
-  // Render loading indicator
+  const playRoRPreview = useMemo(() => {
+    if (moneyModal?.kind !== 'stake' || !activeSession) return null;
+    const unit = Number(bettingUnitInput);
+    return estimateBasicStrategyRoR({
+      remainingBudget,
+      bettingUnit: Number.isFinite(unit) && unit > 0 ? unit : null,
+      rules: moneyTableRules,
+    });
+  }, [
+    moneyModal?.kind,
+    activeSession,
+    remainingBudget,
+    bettingUnitInput,
+    moneyTableRules,
+  ]);
+
   if (isLoading) {
     return (
       <View style={styles.centered}>
@@ -86,13 +117,12 @@ export default function LiveSessionScreen() {
     );
   }
 
-  // Render empty session
   if (!activeSession) {
     return (
       <View style={styles.centered}>
         <Text style={styles.emptyTitle}>No live session</Text>
         <Text style={styles.emptyBody}>
-          Start a live session from the Dashboard.
+          Start a live session from a casino screen.
         </Text>
         <Pressable onPress={() => router.replace('/')}>
           <Text style={styles.link}>Back to Dashboard</Text>
@@ -101,10 +131,33 @@ export default function LiveSessionScreen() {
     );
   }
 
-  // Open the end session form
-  const openEndForm = () => {
-    setBuyIn(String(activeSession.startingBankroll));
-    setCashOut('');
+  const openStakeModal = (tableId: string) => {
+    const table = tables.find((item) => item.id === tableId);
+    const rules = parseTableRules(table?.rulesJson ?? null);
+    if (!rules) {
+      setTableError('Set table rules before playing.');
+      return;
+    }
+    setTableError(null);
+    setFormError(null);
+    setMoneyAmount(remainingBudget > 0 ? String(remainingBudget) : '');
+    setBettingUnitInput(
+      table?.bettingUnit != null
+        ? String(table.bettingUnit)
+        : String(rules.minimumBet),
+    );
+    setMoneyModal({ kind: 'stake', tableId });
+  };
+
+  const openResultsModal = (tableId: string) => {
+    const table = tables.find((item) => item.id === tableId);
+    setTableError(null);
+    setFormError(null);
+    setMoneyAmount(table && table.stake > 0 ? String(table.stake) : '');
+    setMoneyModal({ kind: 'results', tableId });
+  };
+
+  const openEndConfirm = () => {
     setFormError(null);
     setEnding(true);
   };
@@ -122,7 +175,6 @@ export default function LiveSessionScreen() {
     }
   };
 
-  // Discard the live session
   const onDiscard = () => {
     confirmAction(
       {
@@ -138,18 +190,35 @@ export default function LiveSessionScreen() {
     );
   };
 
-  // Save the end session
-  const onSaveEnd = async () => {
+  const onConfirmMoney = async () => {
+    if (!moneyModal) return;
+    setSaving(true);
+    setFormError(null);
+    try {
+      const amount = Number(moneyAmount);
+      if (moneyModal.kind === 'stake') {
+        await playTable(moneyModal.tableId, amount, Number(bettingUnitInput));
+      } else {
+        await pauseTable(moneyModal.tableId, amount);
+      }
+      setMoneyModal(null);
+      setMoneyAmount('');
+      setBettingUnitInput('');
+    } catch (err) {
+      setFormError(
+        err instanceof Error ? err.message : 'Could not update the table.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onConfirmEnd = async () => {
     setSaving(true);
     setFormError(null);
     const casinoId = activeSession.casinoId;
     try {
-      const parsedBuyIn = Number(buyIn);
-      const parsedCashOut = Number(cashOut);
-      await endSession({
-        buyIn: parsedBuyIn,
-        cashOut: parsedCashOut,
-      });
+      await endSession();
       setEnding(false);
       if (casinoId) {
         router.replace({ pathname: '/casino/[id]', params: { id: casinoId } });
@@ -165,7 +234,19 @@ export default function LiveSessionScreen() {
     }
   };
 
-  // Render the live session screen
+  const onBannerResume = () => {
+    const targetId =
+      tables.find((table) => table.id === editingTableId)?.id ??
+      tables[0]?.id;
+    if (!targetId) return;
+    openStakeModal(targetId);
+  };
+
+  const onBannerPause = () => {
+    if (!runningTableId) return;
+    openResultsModal(runningTableId);
+  };
+
   return (
     <View style={styles.screen}>
       <ScrollView
@@ -180,39 +261,60 @@ export default function LiveSessionScreen() {
             {runningTable
               ? `Playing · ${runningTable.name}`
               : tables.length === 0
-                ? 'Add a table and tap Play to start timing'
+                ? 'Add a table and tap Play to stake chips'
                 : 'All tables paused'}
           </Text>
 
           <View style={styles.bannerStats}>
             <View style={styles.bannerStat}>
-              <Text style={styles.bannerLabel}>Starting</Text>
+              <Text style={styles.bannerLabel}>Bankroll</Text>
               <Text style={styles.bannerValue}>
                 {formatCurrency(activeSession.startingBankroll, currency)}
               </Text>
             </View>
             <View style={styles.bannerStat}>
-              <Text style={styles.bannerLabel}>Table P/L</Text>
+              <Text style={styles.bannerLabel}>Budget</Text>
+              <Text style={styles.bannerValue}>
+                {formatCurrency(budget, currency)}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.bannerStats}>
+            <View style={styles.bannerStat}>
+              <Text style={styles.bannerLabel}>Remaining</Text>
+              <Text style={styles.bannerValue}>
+                {formatCurrency(remainingBudget, currency)}
+              </Text>
+            </View>
+            <View style={styles.bannerStat}>
+              <Text style={styles.bannerLabel}>Risk cap</Text>
+              <Text style={styles.bannerValue}>
+                {activeSession.riskTolerance}%
+              </Text>
+            </View>
+          </View>
+          <View style={styles.bannerStats}>
+            <View style={styles.bannerStat}>
+              <Text style={styles.bannerLabel}>Session P/L</Text>
               <Text
                 style={[
                   styles.bannerValue,
                   {
                     color:
-                      cumulativePnL >= 0 ? colors.positive : colors.negative,
+                      sessionNet >= 0 ? colors.positive : colors.negative,
                   },
                 ]}
               >
-                {formatCurrency(cumulativePnL, currency, true)}
+                {formatCurrency(sessionNet, currency, true)}
               </Text>
             </View>
           </View>
         </View>
 
-        {/* Session controls */}
         <View style={styles.controls}>
           {allPaused ? (
             <Pressable
-              onPress={() => void resume()}
+              onPress={onBannerResume}
               disabled={tables.length === 0}
               style={({ pressed }) => [
                 styles.primaryButton,
@@ -224,7 +326,7 @@ export default function LiveSessionScreen() {
             </Pressable>
           ) : (
             <Pressable
-              onPress={() => void pause()}
+              onPress={onBannerPause}
               style={({ pressed }) => [
                 styles.secondaryButton,
                 pressed && styles.pressed,
@@ -234,7 +336,7 @@ export default function LiveSessionScreen() {
             </Pressable>
           )}
           <Pressable
-            onPress={openEndForm}
+            onPress={openEndConfirm}
             style={({ pressed }) => [
               styles.endButton,
               pressed && styles.pressed,
@@ -259,10 +361,9 @@ export default function LiveSessionScreen() {
           </Pressable>
         </View>
 
-        {/* Render empty tables */}
         {tables.length === 0 ? (
           <Text style={styles.emptyTables}>
-            No tables yet. Add one, then tap Play to start its timer.
+            No tables yet. Add one, then tap Play to choose a stake.
           </Text>
         ) : (
           <View style={styles.tableList}>
@@ -305,7 +406,9 @@ export default function LiveSessionScreen() {
                           <>
                             <Text style={styles.tableName}>{title}</Text>
                             {subtitle ? (
-                              <Text style={styles.tableSubtitle}>{subtitle}</Text>
+                              <Text style={styles.tableSubtitle}>
+                                {subtitle}
+                              </Text>
                             ) : null}
                           </>
                         );
@@ -316,6 +419,9 @@ export default function LiveSessionScreen() {
                       <Text style={styles.tableTimer}>
                         {formatElapsed(tableElapsed)}
                         {table.isPaused ? ' · Paused' : ' · Playing'}
+                        {!table.isPaused && table.stake > 0
+                          ? ` · Stake ${formatCurrency(table.stake, currency)}`
+                          : ''}
                       </Text>
                       <Text
                         style={[
@@ -330,6 +436,38 @@ export default function LiveSessionScreen() {
                       >
                         {formatCurrency(table.netResult, currency, true)}
                       </Text>
+                      {(() => {
+                        const rules = parseTableRules(table.rulesJson);
+                        const ror = estimateBasicStrategyRoR({
+                          remainingBudget,
+                          bettingUnit: table.bettingUnit,
+                          rules,
+                        });
+                        if (!ror) {
+                          return (
+                            <Text style={styles.rorUnknown}>RoR unknown</Text>
+                          );
+                        }
+                        const viable = isTableViable(
+                          ror.rorPct,
+                          activeSession.riskTolerance,
+                        );
+                        return (
+                          <Text
+                            style={[
+                              styles.rorLine,
+                              {
+                                color: viable
+                                  ? colors.positive
+                                  : colors.negative,
+                              },
+                            ]}
+                          >
+                            RoR {formatRoR(ror.rorPct)}
+                            {viable ? ' · Viable' : ' · Not viable'}
+                          </Text>
+                        );
+                      })()}
                     </View>
                     <Text style={styles.chevron}>{expanded ? '▾' : '▸'}</Text>
                   </Pressable>
@@ -337,16 +475,7 @@ export default function LiveSessionScreen() {
                   <View style={styles.tableTimerActions}>
                     {table.isPaused ? (
                       <Pressable
-                        onPress={() => {
-                          setTableError(null);
-                          void playTable(table.id).catch((err) =>
-                            setTableError(
-                              err instanceof Error
-                                ? err.message
-                                : 'Could not start table timer.',
-                            ),
-                          );
-                        }}
+                        onPress={() => openStakeModal(table.id)}
                         style={({ pressed }) => [
                           styles.tablePlayButton,
                           pressed && styles.pressed,
@@ -356,10 +485,7 @@ export default function LiveSessionScreen() {
                       </Pressable>
                     ) : (
                       <Pressable
-                        onPress={() => {
-                          setTableError(null);
-                          void pauseTable(table.id);
-                        }}
+                        onPress={() => openResultsModal(table.id)}
                         style={({ pressed }) => [
                           styles.tablePauseButton,
                           pressed && styles.pressed,
@@ -379,17 +505,10 @@ export default function LiveSessionScreen() {
                           void updateTable(table.id, { name })
                         }
                       />
-                      <TextField
-                        label="Net result"
-                        keyboardType="numeric"
-                        value={String(table.netResult)}
-                        onChangeText={(value) => {
-                          const parsed = Number(value);
-                          if (Number.isFinite(parsed)) {
-                            void updateTable(table.id, { netResult: parsed });
-                          }
-                        }}
-                      />
+                      <Text style={styles.hoursReadOnly}>
+                        Table P/L:{' '}
+                        {formatCurrency(table.netResult, currency, true)}
+                      </Text>
                       <Pressable
                         onPress={() => setRulesTableId(table.id)}
                         style={({ pressed }) => [
@@ -419,7 +538,118 @@ export default function LiveSessionScreen() {
         </Pressable>
       </ScrollView>
 
-      {/* End session modal */}
+      <Modal
+        visible={moneyModal != null}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setMoneyModal(null)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalBackdrop}
+        >
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>
+              {moneyModal?.kind === 'stake' ? 'Table stake' : 'Table results'}
+            </Text>
+            {moneyTable ? (
+              <Text style={styles.hoursReadOnly}>{moneyTable.name}</Text>
+            ) : null}
+            {moneyModal?.kind === 'stake' ? (
+              <>
+                <Text style={styles.hoursReadOnly}>
+                  Remaining budget:{' '}
+                  {formatCurrency(remainingBudget, currency)}
+                </Text>
+                <Text style={styles.hoursReadOnly}>
+                  Table min:{' '}
+                  {formatCurrency(moneyTableRules?.minimumBet ?? 0, currency)}
+                </Text>
+                <TextField
+                  label="Betting unit"
+                  keyboardType="numeric"
+                  value={bettingUnitInput}
+                  onChangeText={setBettingUnitInput}
+                />
+                <TextField
+                  label="Stake"
+                  keyboardType="numeric"
+                  value={moneyAmount}
+                  onChangeText={setMoneyAmount}
+                />
+                {playRoRPreview ? (
+                  <Text
+                    style={[
+                      styles.hoursReadOnly,
+                      {
+                        color: isTableViable(
+                          playRoRPreview.rorPct,
+                          activeSession.riskTolerance,
+                        )
+                          ? colors.positive
+                          : colors.negative,
+                      },
+                    ]}
+                  >
+                    Est. RoR {formatRoR(playRoRPreview.rorPct)} (cap{' '}
+                    {activeSession.riskTolerance}%)
+                    {!isTableViable(
+                      playRoRPreview.rorPct,
+                      activeSession.riskTolerance,
+                    )
+                      ? ' — above your risk cap'
+                      : ''}
+                  </Text>
+                ) : (
+                  <Text style={styles.hoursReadOnly}>
+                    RoR unknown until unit is set
+                  </Text>
+                )}
+              </>
+            ) : (
+              <>
+                <Text style={styles.hoursReadOnly}>
+                  Stake out:{' '}
+                  {formatCurrency(moneyTable?.stake ?? 0, currency)}
+                </Text>
+                <TextField
+                  label="Ending chips"
+                  keyboardType="numeric"
+                  value={moneyAmount}
+                  onChangeText={setMoneyAmount}
+                />
+              </>
+            )}
+            {formError ? <Text style={styles.error}>{formError}</Text> : null}
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={() => setMoneyModal(null)}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void onConfirmMoney()}
+                disabled={saving}
+                style={({ pressed }) => [
+                  styles.primaryButton,
+                  pressed && styles.pressed,
+                  saving && styles.disabled,
+                ]}
+              >
+                <Text style={styles.primaryButtonText}>
+                  {saving
+                    ? 'Saving…'
+                    : moneyModal?.kind === 'stake'
+                      ? 'Play'
+                      : 'Pause'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       <Modal
         visible={ending}
         animationType="slide"
@@ -431,24 +661,43 @@ export default function LiveSessionScreen() {
           style={styles.modalBackdrop}
         >
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>End session</Text>
+            <Text style={styles.modalTitle}>End session?</Text>
             <Text style={styles.hoursReadOnly}>
               Casino: {activeSession.location}
             </Text>
-            <TextField
-              label="Buy-in"
-              keyboardType="numeric"
-              value={buyIn}
-              onChangeText={setBuyIn}
-            />
-            <TextField
-              label="Cash-out"
-              keyboardType="numeric"
-              value={cashOut}
-              onChangeText={setCashOut}
-            />
             <Text style={styles.hoursReadOnly}>
-              Hours played (from table timers): {hoursPreview}
+              Budget: {formatCurrency(budget, currency)}
+            </Text>
+            <Text style={styles.hoursReadOnly}>
+              Cash-out (remaining):{' '}
+              {formatCurrency(remainingBudget, currency)}
+            </Text>
+            <Text
+              style={[
+                styles.hoursReadOnly,
+                {
+                  color: sessionNet >= 0 ? colors.positive : colors.negative,
+                },
+              ]}
+            >
+              Net: {formatCurrency(sessionNet, currency, true)}
+            </Text>
+            <Text style={styles.hoursReadOnly}>
+              Hours played: {hoursPreview}
+            </Text>
+            {tables.length > 0 ? (
+              <View style={styles.confirmTables}>
+                {tables.map((table) => (
+                  <Text key={table.id} style={styles.hoursReadOnly}>
+                    {table.name}:{' '}
+                    {formatCurrency(table.netResult, currency, true)}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+            <Text style={styles.hoursReadOnly}>
+              Table P/L total:{' '}
+              {formatCurrency(cumulativePnL, currency, true)}
             </Text>
             {formError ? <Text style={styles.error}>{formError}</Text> : null}
             <View style={styles.modalActions}>
@@ -459,7 +708,7 @@ export default function LiveSessionScreen() {
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
               </Pressable>
               <Pressable
-                onPress={() => void onSaveEnd()}
+                onPress={() => void onConfirmEnd()}
                 disabled={saving}
                 style={({ pressed }) => [
                   styles.primaryButton,
@@ -468,7 +717,7 @@ export default function LiveSessionScreen() {
                 ]}
               >
                 <Text style={styles.primaryButtonText}>
-                  {saving ? 'Saving…' : 'Save session'}
+                  {saving ? 'Saving…' : 'Confirm'}
                 </Text>
               </Pressable>
             </View>
@@ -507,7 +756,6 @@ export default function LiveSessionScreen() {
   );
 }
 
-// Live session screen style rules
 const styles = StyleSheet.create({
   screen: {
     backgroundColor: colors.background,
@@ -561,7 +809,11 @@ const styles = StyleSheet.create({
   },
   timer: {
     color: colors.text,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+    fontFamily: Platform.select({
+      ios: 'Menlo',
+      android: 'monospace',
+      default: 'monospace',
+    }),
     fontSize: 40,
     fontWeight: '700',
   },
@@ -727,6 +979,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  rorUnknown: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  rorLine: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
   chevron: {
     color: colors.textMuted,
     fontSize: 16,
@@ -781,6 +1042,10 @@ const styles = StyleSheet.create({
   },
   hoursReadOnly: {
     color: colors.textMuted,
+    marginTop: spacing.xs,
+  },
+  confirmTables: {
+    gap: 2,
     marginTop: spacing.xs,
   },
   error: {
