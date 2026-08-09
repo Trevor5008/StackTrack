@@ -12,7 +12,7 @@ keys. `netResult` is normalized to `cashOut - buyIn` during validation.
 
 ## SQLite tables
 
-Database file: `stacktrack.db` · schema version: `4` (stored in `meta`)
+Database file: `stacktrack.db` · schema version: `6` (stored in `meta`)
 
 | Table | Purpose |
 | --- | --- |
@@ -63,14 +63,19 @@ At most one row. Reloading the app recovers the live session and its tables.
 | `id` | TEXT PK | Client-generated |
 | `casino_id` | TEXT | FK → `casinos.id` (required when live) |
 | `location` | TEXT | Denormalized casino name for the live banner |
-| `starting_bankroll` | REAL | Bankroll when the live session started |
-| `buy_in` | REAL | Nullable until end form |
+| `starting_bankroll` | REAL | Bankroll snapshot when the live session started |
+| `buy_in` | REAL | Session **budget** chosen at start (`≤ starting_bankroll`) |
+| `remaining_budget` | REAL | Chips still available to stake (updated on play/pause) |
+| `risk_tolerance` | REAL | Max acceptable BS RoR % (`1|2|5|10|20|25|40`) |
 | `segment_started_at` | TEXT | Legacy session timer (unused for hours) |
 | `accumulated_ms` | INTEGER | Legacy session timer (unused for hours) |
 | `is_paused` | INTEGER | Legacy session timer (unused for hours) |
 | `paused_at` | TEXT | Nullable ISO timestamp |
 | `created_at` | TEXT | ISO timestamp |
 | `updated_at` | TEXT | ISO timestamp |
+
+Money hierarchy: **bankroll** → **session budget** (`buy_in`) → **table stake**.
+`remaining_budget = budget + sum(table.net_result) - sum(table.stake)`.
 
 Elapsed time and `hoursPlayed` come from **per-table timers** on
 `active_tables` / `session_tables`. Session-level timer columns remain for
@@ -85,6 +90,13 @@ session already had wall-clock time and tables, that elapsed is moved onto the
 **first** active table as paused `accumulated_ms` so in-progress sessions are
 not zeroed.
 
+Schema v5 adds `remaining_budget` on `active_sessions` and `stake` on
+`active_tables`. In-progress rows with null `buy_in` get
+`buy_in = starting_bankroll` and `remaining_budget = buy_in`.
+
+Schema v6 adds `risk_tolerance` on `active_sessions` and `betting_unit` on
+`active_tables` / `session_tables` (RoR unknown until rules + unit are set).
+
 ### active_tables
 
 | Column | Type | Notes |
@@ -93,7 +105,9 @@ not zeroed.
 | `active_session_id` | TEXT FK | → `active_sessions.id` |
 | `name` | TEXT | Display name |
 | `sort_order` | INTEGER | List order |
-| `net_result` | REAL | Manual / default `0` |
+| `net_result` | REAL | Cumulative P/L from pause settlements |
+| `stake` | REAL | Chips on this table while Playing; `0` when paused |
+| `betting_unit` | REAL | Nullable until set on Play; drives RoR |
 | `rank_placeholder` | INTEGER | Legacy nullable; ranking is computed from `rules_json` |
 | `rules_json` | TEXT | Nullable JSON `TableRules` (see below) |
 | `accumulated_ms` | INTEGER | Frozen elapsed while paused / prior segments |
@@ -103,9 +117,16 @@ not zeroed.
 | `created_at` | TEXT | ISO timestamp |
 | `updated_at` | TEXT | ISO timestamp |
 
-Only one table may run at a time. Play on another table is blocked until the
-running table is paused. Table elapsed = `accumulated_ms` while paused, else
-`accumulated_ms + (now - segment_started_at)`.
+Only one table may run at a time. Play asks for a **betting unit**
+(`≥ minimumBet`) and a stake (`≤ remaining_budget`). Pause asks for ending
+chips; `net_result += ending − stake`, stake clears, ending returns to
+`remaining_budget`.
+
+**Risk of Ruin (basic strategy heuristic):** unknown until `rules_json` and
+`betting_unit` are set. Then
+`rorPct = 100 * exp(-units / (10 * max(HE, 0.05)))` with
+`units = remaining_budget / betting_unit`. Table is **not viable** when
+`rorPct > risk_tolerance`. See `src/lib/riskOfRuin.ts`.
 
 ### session_tables
 
@@ -121,6 +142,7 @@ Snapshot of live tables when a session is ended and saved.
 | `rank_placeholder` | INTEGER | Legacy nullable; ranking computed from rules |
 | `rules_json` | TEXT | Nullable JSON `TableRules` snapshot |
 | `elapsed_ms` | INTEGER | Snapshot of table timer at end |
+| `betting_unit` | REAL | Nullable snapshot of betting unit |
 | `created_at` | TEXT | ISO timestamp |
 
 `rules_json` shape (`src/types/tableRules.ts`):
@@ -218,17 +240,20 @@ Derived stats shape (not persisted).
 ### ActiveSession / ActiveTable / SessionTable
 
 TypeScript shapes live in `src/types/liveSession.ts`. Managed by
-`liveSessionStore` + `LiveSessionContext` (`playTable` / `pauseTable`,
-`elapsedMs` = sum of table timers). Completing a live session pauses any
-running table, calls `SessionContext.addSession` with
-`hoursPlayed = max(0.01, msToHoursPlayed(sum))`, copies tables into
-`session_tables` (including `elapsed_ms`), then clears `active_*` rows.
+`liveSessionStore` + `LiveSessionContext` (`playTable(id, stake)` /
+`pauseTable(id, endingChips)`, `elapsedMs` = sum of table timers).
 
-| Type | Timer fields |
+Completing a live session requires all tables paused with no open stake, then
+calls `SessionContext.addSession` with `buyIn = budget`,
+`cashOut = remainingBudget`, `hoursPlayed = max(0.01, msToHoursPlayed(sum))`,
+copies tables into `session_tables` (including `elapsed_ms`), then clears
+`active_*` rows.
+
+| Type | Money / timer fields |
 | --- | --- |
-| `ActiveTable` | `accumulatedMs`, `segmentStartedAt`, `isPaused`, `pausedAt` |
-| `SessionTable` | `elapsedMs` (snapshot at end) |
-| `ActiveSession` | legacy timer fields only; UI derives elapsed from tables |
+| `ActiveSession` | `buyIn` (budget), `remainingBudget`, `riskTolerance`; legacy session timer unused for hours |
+| `ActiveTable` | `stake`, `bettingUnit`, `netResult`; timer: `accumulatedMs`, `segmentStartedAt`, `isPaused`, `pausedAt` |
+| `SessionTable` | `elapsedMs`, `bettingUnit`, `netResult` (snapshots at end) |
 
 ## Derived stats
 
@@ -284,6 +309,9 @@ erDiagram
     string casinoId FK
     string location
     number startingBankroll
+    number buyIn
+    number remainingBudget
+    number riskTolerance
     number accumulatedMs
     boolean isPaused
   }
@@ -292,6 +320,8 @@ erDiagram
     string activeSessionId FK
     string name
     number netResult
+    number stake
+    number bettingUnit
     string rulesJson
     number accumulatedMs
     boolean isPaused
@@ -303,6 +333,7 @@ erDiagram
     number netResult
     string rulesJson
     number elapsedMs
+    number bettingUnit
   }
   TableRules {
     number decks
@@ -341,7 +372,7 @@ flowchart LR
     CasinosTbl[casinos]
     SessionsTbl[sessions]
     ActiveSessions[active_sessions]
-    ActiveTables["active_tables<br/>rules_json + timers"]
+    ActiveTables["active_tables<br/>rules_json + timers + stake"]
     SessionTables["session_tables<br/>rules_json + elapsed_ms"]
   end
 

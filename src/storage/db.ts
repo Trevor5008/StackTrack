@@ -5,7 +5,7 @@ import { casinoNameKey } from '@/src/lib/casinoName';
 import { computeElapsedMs, createId } from '@/src/lib/liveTimer';
 
 export const DATABASE_NAME = 'stacktrack.db';
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 6;
 
 const SCHEMA_V1_SQL = `
 CREATE TABLE IF NOT EXISTS meta (
@@ -268,6 +268,70 @@ async function migrateToV4(db: SQLiteDatabase): Promise<void> {
   );
 }
 
+async function migrateToV5(db: SQLiteDatabase): Promise<void> {
+  if (!(await columnExists(db, 'active_sessions', 'remaining_budget'))) {
+    await db.execAsync(
+      'ALTER TABLE active_sessions ADD COLUMN remaining_budget REAL',
+    );
+  }
+  if (!(await columnExists(db, 'active_tables', 'stake'))) {
+    await db.execAsync(
+      'ALTER TABLE active_tables ADD COLUMN stake REAL NOT NULL DEFAULT 0',
+    );
+  }
+
+  const active = await db.getFirstAsync<{
+    id: string;
+    buy_in: number | null;
+    starting_bankroll: number;
+    remaining_budget: number | null;
+  }>(
+    `SELECT id, buy_in, starting_bankroll, remaining_budget
+     FROM active_sessions LIMIT 1`,
+  );
+  if (!active) return;
+
+  const budget =
+    active.buy_in != null && Number.isFinite(active.buy_in) && active.buy_in > 0
+      ? active.buy_in
+      : active.starting_bankroll;
+  const remaining =
+    active.remaining_budget != null && Number.isFinite(active.remaining_budget)
+      ? active.remaining_budget
+      : budget;
+
+  await db.runAsync(
+    `UPDATE active_sessions
+     SET buy_in = ?, remaining_budget = ?
+     WHERE id = ?`,
+    [budget, remaining, active.id],
+  );
+}
+
+async function migrateToV6(db: SQLiteDatabase): Promise<void> {
+  if (!(await columnExists(db, 'active_sessions', 'risk_tolerance'))) {
+    await db.execAsync(
+      'ALTER TABLE active_sessions ADD COLUMN risk_tolerance REAL NOT NULL DEFAULT 5',
+    );
+  }
+  if (!(await columnExists(db, 'active_tables', 'betting_unit'))) {
+    await db.execAsync(
+      'ALTER TABLE active_tables ADD COLUMN betting_unit REAL',
+    );
+  }
+  if (!(await columnExists(db, 'session_tables', 'betting_unit'))) {
+    await db.execAsync(
+      'ALTER TABLE session_tables ADD COLUMN betting_unit REAL',
+    );
+  }
+
+  await db.runAsync(
+    `UPDATE active_sessions
+     SET risk_tolerance = 5
+     WHERE risk_tolerance IS NULL OR risk_tolerance <= 0`,
+  );
+}
+
 export async function getDb(): Promise<SQLiteDatabase> {
   if (!dbPromise) {
     dbPromise = SQLite.openDatabaseAsync(DATABASE_NAME);
@@ -288,6 +352,8 @@ export async function getDb(): Promise<SQLiteDatabase> {
     await db.execAsync(SCHEMA_V2_SQL);
     await migrateToV3(db);
     await migrateToV4(db);
+    await migrateToV5(db);
+    await migrateToV6(db);
     const version = await getMeta(db, 'schema_version');
     if (version !== String(SCHEMA_VERSION)) {
       await setMeta(db, 'schema_version', String(SCHEMA_VERSION));

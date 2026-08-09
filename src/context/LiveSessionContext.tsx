@@ -17,19 +17,31 @@ import {
   sumTableElapsedMs,
 } from '@/src/lib/liveTimer';
 import {
+  assertBettingUnit,
+  assertRiskTolerance,
+} from '@/src/lib/riskOfRuin';
+import {
+  assertBudget,
+  assertEndingChips,
+  assertStake,
+  computeRemainingBudget,
+  hasOpenStake,
+} from '@/src/lib/sessionBudget';
+import { parseTableRules } from '@/src/lib/tableRules';
+import {
   addActiveTable,
   clearActiveSession,
   copyTablesToSession,
   loadActiveSession,
   loadActiveTables,
   startActiveSession,
+  updateActiveSession,
   updateActiveTable,
 } from '@/src/storage/liveSessionStore';
 import {
   ActiveSession,
   ActiveTable,
   AddTableInput,
-  EndLiveSessionInput,
   StartLiveSessionInput,
 } from '@/src/types/liveSession';
 import { Session } from '@/src/types/session';
@@ -39,29 +51,30 @@ type LiveSessionContextValue = {
   tables: ActiveTable[];
   elapsedMs: number;
   cumulativePnL: number;
+  remainingBudget: number;
   runningTableId: string | null;
   isLoading: boolean;
   error: string | null;
   startSession: (input: StartLiveSessionInput) => Promise<ActiveSession>;
-  /** Pause the currently running table (banner control). */
-  pause: () => Promise<void>;
-  /** Resume the last paused table when exactly one was running before — uses play on none; prefer playTable. */
-  resume: () => Promise<void>;
-  playTable: (id: string) => Promise<void>;
-  pauseTable: (id: string) => Promise<void>;
+  playTable: (
+    id: string,
+    stake: number,
+    bettingUnit: number,
+  ) => Promise<void>;
+  pauseTable: (id: string, endingChips: number) => Promise<void>;
   addTable: (input?: AddTableInput) => Promise<ActiveTable>;
   updateTable: (
     id: string,
-    patch: Partial<Pick<ActiveTable, 'name' | 'netResult' | 'rulesJson'>>,
+    patch: Partial<Pick<ActiveTable, 'name' | 'rulesJson'>>,
   ) => Promise<void>;
-  endSession: (input: EndLiveSessionInput) => Promise<Session>;
+  endSession: () => Promise<Session>;
   discardSession: () => Promise<void>;
   refresh: () => Promise<void>;
 };
 
 const LiveSessionContext = createContext<LiveSessionContextValue | null>(null);
 
-function freezeTable(table: ActiveTable, nowMs: number): ActiveTable {
+function freezeTableTimer(table: ActiveTable, nowMs: number): ActiveTable {
   if (table.isPaused) return table;
   const accumulated = computeElapsedMs({
     accumulatedMs: table.accumulatedMs,
@@ -89,10 +102,6 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
   const [elapsedMs, setElapsedMs] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  /** Table to resume from banner when all paused after a pause. */
-  const [lastPausedTableId, setLastPausedTableId] = useState<string | null>(
-    null,
-  );
 
   const refresh = useCallback(async () => {
     const session = await loadActiveSession();
@@ -128,15 +137,19 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
 
   const startSession = useCallback(
     async (input: StartLiveSessionInput) => {
+      const startingBankroll =
+        input.startingBankroll ?? settings.startingBankroll;
+      assertBudget(input.budget, startingBankroll);
+      const riskTolerance = assertRiskTolerance(input.riskTolerance);
       const session = await startActiveSession({
         casinoId: input.casinoId,
-        startingBankroll:
-          input.startingBankroll ?? settings.startingBankroll,
+        startingBankroll,
+        budget: input.budget,
+        riskTolerance,
       });
       setActiveSession(session);
       setTables([]);
       setElapsedMs(0);
-      setLastPausedTableId(null);
       setError(null);
       return session;
     },
@@ -144,67 +157,98 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
   );
 
   const pauseTable = useCallback(
-    async (id: string) => {
+    async (id: string, endingChips: number) => {
+      if (!activeSession) {
+        throw new Error('No live session in progress.');
+      }
+      assertEndingChips(endingChips);
       const current = tables.find((table) => table.id === id);
       if (!current || current.isPaused) return;
+      if (current.stake <= 0) {
+        throw new Error('This table has no stake to settle.');
+      }
+
       const nowMs = Date.now();
-      const next = freezeTable(current, nowMs);
-      await updateActiveTable(next);
-      setTables((prev) => prev.map((table) => (table.id === id ? next : table)));
-      setLastPausedTableId(id);
-      setElapsedMs(sumTableElapsedMs(
-        tables.map((table) => (table.id === id ? next : table)),
-        nowMs,
-      ));
+      const nowIso = new Date(nowMs).toISOString();
+      const segmentNet = endingChips - current.stake;
+      const nextTable: ActiveTable = {
+        ...freezeTableTimer(current, nowMs),
+        netResult: current.netResult + segmentNet,
+        stake: 0,
+        updatedAt: nowIso,
+      };
+      const nextTables = tables.map((table) =>
+        table.id === id ? nextTable : table,
+      );
+      const remainingBudget = computeRemainingBudget(
+        activeSession.buyIn,
+        nextTables,
+      );
+      const nextSession: ActiveSession = {
+        ...activeSession,
+        remainingBudget,
+        updatedAt: nowIso,
+      };
+
+      await updateActiveTable(nextTable);
+      await updateActiveSession(nextSession);
+      setTables(nextTables);
+      setActiveSession(nextSession);
+      setElapsedMs(sumTableElapsedMs(nextTables, nowMs));
       setError(null);
     },
-    [tables],
+    [activeSession, tables],
   );
 
   const playTable = useCallback(
-    async (id: string) => {
+    async (id: string, stake: number, bettingUnit: number) => {
+      if (!activeSession) {
+        throw new Error('No live session in progress.');
+      }
       assertCanPlayTable(tables, id);
+      const available = computeRemainingBudget(activeSession.buyIn, tables);
+      assertStake(stake, available);
       const current = tables.find((table) => table.id === id);
       if (!current) return;
       if (!current.isPaused) return;
 
+      const rules = parseTableRules(current.rulesJson);
+      if (!rules) {
+        throw new Error('Set table rules before playing.');
+      }
+      assertBettingUnit(bettingUnit, rules.minimumBet);
+
       const nowIso = new Date().toISOString();
-      const next: ActiveTable = {
+      const nextTable: ActiveTable = {
         ...current,
+        stake,
+        bettingUnit,
         isPaused: false,
         pausedAt: null,
         segmentStartedAt: nowIso,
         updatedAt: nowIso,
       };
-      await updateActiveTable(next);
-      setTables((prev) => prev.map((table) => (table.id === id ? next : table)));
-      setLastPausedTableId(null);
+      const nextTables = tables.map((table) =>
+        table.id === id ? nextTable : table,
+      );
+      const remainingBudget = computeRemainingBudget(
+        activeSession.buyIn,
+        nextTables,
+      );
+      const nextSession: ActiveSession = {
+        ...activeSession,
+        remainingBudget,
+        updatedAt: nowIso,
+      };
+
+      await updateActiveTable(nextTable);
+      await updateActiveSession(nextSession);
+      setTables(nextTables);
+      setActiveSession(nextSession);
       setError(null);
     },
-    [tables],
+    [activeSession, tables],
   );
-
-  const pause = useCallback(async () => {
-    const running = findRunningTable(tables);
-    if (!running) return;
-    await pauseTable(running.id);
-  }, [tables, pauseTable]);
-
-  const resume = useCallback(async () => {
-    if (findRunningTable(tables)) return;
-    const targetId =
-      lastPausedTableId && tables.some((t) => t.id === lastPausedTableId)
-        ? lastPausedTableId
-        : tables[0]?.id;
-    if (!targetId) return;
-    try {
-      await playTable(targetId);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Could not resume table timer.',
-      );
-    }
-  }, [tables, lastPausedTableId, playTable]);
 
   const addTable = useCallback(
     async (input: AddTableInput = { name: '' }) => {
@@ -221,7 +265,7 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
   const updateTable = useCallback(
     async (
       id: string,
-      patch: Partial<Pick<ActiveTable, 'name' | 'netResult' | 'rulesJson'>>,
+      patch: Partial<Pick<ActiveTable, 'name' | 'rulesJson'>>,
     ) => {
       const current = tables.find((table) => table.id === id);
       if (!current) return;
@@ -242,67 +286,58 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
     setActiveSession(null);
     setTables([]);
     setElapsedMs(0);
-    setLastPausedTableId(null);
     setError(null);
   }, []);
 
-  const endSession = useCallback(
-    async (input: EndLiveSessionInput) => {
-      if (!activeSession) {
-        throw new Error('No live session to end.');
-      }
+  const endSession = useCallback(async () => {
+    if (!activeSession) {
+      throw new Error('No live session to end.');
+    }
+    if (!activeSession.casinoId) {
+      throw new Error('Live session is missing a casino.');
+    }
+    if (hasOpenStake(tables) || tables.some((table) => !table.isPaused)) {
+      throw new Error('Pause every table and enter results before ending.');
+    }
 
-      const nowMs = Date.now();
-      const frozen = tables.map((table) => freezeTable(table, nowMs));
-      for (let i = 0; i < tables.length; i += 1) {
-        if (!tables[i].isPaused) {
-          await updateActiveTable(frozen[i]);
-        }
-      }
+    const nowMs = Date.now();
+    const hoursPlayed = Math.max(
+      0.01,
+      msToHoursPlayed(sumTableElapsedMs(tables, nowMs)),
+    );
+    const buyIn = activeSession.buyIn;
+    const cashOut = computeRemainingBudget(buyIn, tables);
 
-      const finalElapsed = sumTableElapsedMs(frozen, nowMs);
-      const hoursPlayed = Math.max(0.01, msToHoursPlayed(finalElapsed));
-      const buyIn =
-        Number.isFinite(input.buyIn) && input.buyIn >= 0
-          ? input.buyIn
-          : activeSession.startingBankroll;
-      const cashOut = input.cashOut;
+    const today = new Date().toISOString().slice(0, 10);
+    const session = await addSession({
+      date: today,
+      location: activeSession.location.trim() || 'Unknown casino',
+      casinoId: activeSession.casinoId,
+      startingBankroll: activeSession.startingBankroll,
+      buyIn,
+      cashOut,
+      hoursPlayed,
+      notes: undefined,
+    });
 
-      if (!activeSession.casinoId) {
-        throw new Error('Live session is missing a casino.');
-      }
-      if (!Number.isFinite(cashOut) || cashOut < 0) {
-        throw new Error('Enter a valid cash-out amount.');
-      }
-
-      const today = new Date().toISOString().slice(0, 10);
-      const session = await addSession({
-        date: today,
-        location: activeSession.location.trim() || 'Unknown casino',
-        casinoId: activeSession.casinoId,
-        startingBankroll: activeSession.startingBankroll,
-        buyIn,
-        cashOut,
-        hoursPlayed,
-        notes: undefined,
-      });
-
-      await copyTablesToSession(session.id, frozen);
-      await clearActiveSession();
-      setActiveSession(null);
-      setTables([]);
-      setElapsedMs(0);
-      setLastPausedTableId(null);
-      setError(null);
-      return session;
-    },
-    [activeSession, addSession, tables],
-  );
+    await copyTablesToSession(session.id, tables);
+    await clearActiveSession();
+    setActiveSession(null);
+    setTables([]);
+    setElapsedMs(0);
+    setError(null);
+    return session;
+  }, [activeSession, addSession, tables]);
 
   const cumulativePnL = useMemo(
     () => tables.reduce((sum, table) => sum + table.netResult, 0),
     [tables],
   );
+
+  const remainingBudget = useMemo(() => {
+    if (!activeSession) return 0;
+    return computeRemainingBudget(activeSession.buyIn, tables);
+  }, [activeSession, tables]);
 
   const runningTableId = useMemo(
     () => findRunningTable(tables)?.id ?? null,
@@ -315,12 +350,11 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
       tables,
       elapsedMs,
       cumulativePnL,
+      remainingBudget,
       runningTableId,
       isLoading,
       error,
       startSession,
-      pause,
-      resume,
       playTable,
       pauseTable,
       addTable,
@@ -334,12 +368,11 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
       tables,
       elapsedMs,
       cumulativePnL,
+      remainingBudget,
       runningTableId,
       isLoading,
       error,
       startSession,
-      pause,
-      resume,
       playTable,
       pauseTable,
       addTable,

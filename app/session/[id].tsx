@@ -21,6 +21,7 @@ import { confirmAction } from '@/src/lib/confirm';
 import { formatCurrency, formatDate, formatHours, formatTableCardTitle } from '@/src/lib/format';
 import { formatElapsed } from '@/src/lib/liveTimer';
 import { formatHouseEdge } from '@/src/lib/houseEdge';
+import { estimateBasicStrategyRoR, formatRoR } from '@/src/lib/riskOfRuin';
 import { formatTableRulesSummary, parseTableRules } from '@/src/lib/tableRules';
 import { rankTables } from '@/src/lib/tableRanking';
 import { loadSessionTables } from '@/src/storage/liveSessionStore';
@@ -150,6 +151,7 @@ export default function SessionDetailScreen() {
             submitLabel="Update session"
           />
           <SessionTablesList
+            cashOut={session.cashOut}
             currency={settings.currency}
             loading={tablesLoading}
             ranks={tableRanks}
@@ -206,6 +208,7 @@ export default function SessionDetailScreen() {
       </View>
 
       <SessionTablesList
+        cashOut={session.cashOut}
         currency={settings.currency}
         loading={tablesLoading}
         ranks={tableRanks}
@@ -269,11 +272,13 @@ function SessionTablesList({
   loading,
   ranks,
   tables,
+  cashOut,
 }: {
   currency: string;
   loading: boolean;
   ranks: ReturnType<typeof rankTables>;
   tables: SessionTable[];
+  cashOut: number;
 }) {
   return (
     <View style={styles.tablesSection}>
@@ -326,6 +331,25 @@ function SessionTablesList({
                       {formatElapsed(table.elapsedMs)}
                     </Text>
                   ) : null}
+                  {(() => {
+                    const ror = estimateBasicStrategyRoR({
+                      remainingBudget: cashOut,
+                      bettingUnit: table.bettingUnit,
+                      rules,
+                    });
+                    if (!ror) {
+                      return (
+                        <Text style={styles.tableElapsed}>RoR unknown</Text>
+                      );
+                    }
+                    return (
+                      <Text style={styles.tableElapsed}>
+                        Unit{' '}
+                        {formatCurrency(table.bettingUnit ?? 0, currency)} · RoR{' '}
+                        {formatRoR(ror.rorPct)}
+                      </Text>
+                    );
+                  })()}
                   <Text style={styles.tableRules}>
                     {rules
                       ? `${formatTableRulesSummary(rules)}${

@@ -70,6 +70,13 @@ export function SessionForm({
     setForm((current) => ({ ...current, [field]: value }));
   };
 
+  /**
+   * Handle the submission of the session form.
+   * @returns {Promise<void>}
+   * @description This function is used to handle the submission of the session form.
+   * @example
+   * <SessionForm onSubmit={handleSubmit} />
+   */
   const handleSubmit = async () => {
     const numericFields = [
       form.startingBankroll,
@@ -83,6 +90,7 @@ export function SessionForm({
       return;
     }
 
+    // Validate the casino ID and location.
     let casinoId = form.casinoId.trim();
     let location = casinos.find((c) => c.id === casinoId)?.name ?? '';
 
@@ -134,6 +142,13 @@ export function SessionForm({
   };
 
   return (
+    //
+    // Render the session form.
+    // @returns {JSX.Element}
+    // @description This function is used to render the session form.
+    // @example
+    // <SessionForm onSubmit={handleSubmit} />
+    //
     <View style={styles.form}>
       <TextField
         label="Date"
@@ -174,6 +189,7 @@ export function SessionForm({
         }}
       />
 
+      {/* Bankroll session field */}
       <TextField
         label="Bankroll before session"
         value={form.startingBankroll}
@@ -245,7 +261,21 @@ export function SessionForm({
   );
 }
 
+/**
+ * Styles for the session form.
+ * @returns {StyleSheet}
+ * @description This function is used to style the session form.
+ * @example
+ * <SessionForm onSubmit={handleSubmit} />
+ */
 const styles = StyleSheet.create({
+  //
+  // Styles for the session form.
+  // @returns {StyleSheet}
+  // @description This function is used to style the session form.
+  // @example
+  // <SessionForm onSubmit={handleSubmit} />
+  //
   form: {
     gap: spacing.md,
   },

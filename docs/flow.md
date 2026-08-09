@@ -58,38 +58,55 @@ flowchart TD
   Dashboard[Dashboard casino cards] -->|Add casino| AddCasino[Name new casino]
   AddCasino --> CasinoScreen[Casino screen]
   Dashboard -->|Tap casino| CasinoScreen
-  CasinoScreen -->|Start live session| Live["Active session — no auto timer"]
-  Live -->|Add table| Tables[Table cards start paused at 0]
-  Tables -->|Play on a table| TableTimer[That table timer runs]
-  TableTimer -->|Pause before other Play| Tables
-  Live -->|Banner Pause or Resume| BannerCtrl[Acts on running or last paused table]
-  BannerCtrl --> Tables
-  Live -->|End session| Freeze[Pause any running table]
-  Freeze --> EndForm["Buy-in + cash-out only"]
-  EndForm --> Persist["hoursPlayed = sum of table timers"]
+  CasinoScreen -->|Start| BudgetModal["Budget + risk tolerance"]
+  BudgetModal --> Live[Active session]
+  Live -->|Add table| Tables[Table cards start paused]
+  Tables -->|Set rules| RulesReady[RoR still unknown]
+  RulesReady -->|Play| StakeModal["Betting unit + stake"]
+  StakeModal --> Calc["BS RoR from units and -HE"]
+  Calc -->|ror greater than tol| Bad[Not viable]
+  Calc -->|ror less or equal tol| Ok[Viable]
+  StakeModal --> TableTimer[Timer runs with stake out]
+  TableTimer -->|Pause| ResultsModal["Ending chips"]
+  ResultsModal -->|Update budget and net| Tables
+  Live -->|End| Confirm["Confirm derived cash-out"]
+  Confirm --> Persist["buyIn=budget cashOut=remaining"]
   Persist --> CasinoScreen
   CasinoScreen -->|Recent sessions| Detail[Session Detail]
-  Detail --> TableOverview[Tables overview with elapsed_ms]
+  Detail --> TableOverview[Tables with elapsed net RoR]
   Tables -->|Edit rules| RulesModal[TableRulesForm]
-  RulesModal -->|Save rules_json| Tables
-  Tables --> Rank[rankTables house edge]
-  Rank --> Badge[RankBadge absolute tier]
-  Rank -->|unique lowest HE| BestFrame[Best rules frame]
-  TableOverview -->|Read-only summary| RulesSummary[formatTableRulesSummary]
-  TableOverview --> Rank
+  RulesModal --> Tables
 ```
+
+### Bankroll → budget → stake
+
+- **Start session**: choose session budget (`0 < budget ≤ currentBankroll`) and **risk tolerance** preset
+- **Play**: choose betting unit (`≥ table min`) and stake (`≤ remaining budget`); only one table may run
+- **Pause**: enter ending chips; `net = ending − stake`; chips return to remaining
+- **End**: confirmation only — persist `buyIn = budget`, `cashOut = remaining`,
+  `netResult = cashOut − buyIn` (updates global bankroll via existing stats)
+- Block end while any table still has stake out / is playing
+
+Helpers: `assertBudget`, `assertStake`, `computeRemainingBudget` in
+`src/lib/sessionBudget.ts`.
+
+### Risk of Ruin (basic strategy)
+
+- RoR is **unknown** until table rules and betting unit are set
+- Estimate uses remaining budget ÷ unit and approximate house edge (BS only; no counting)
+- If estimated RoR **>** session risk tolerance → **Not viable** visual (soft warn on Play)
+- Helpers: `estimateBasicStrategyRoR`, `isTableViable` in `src/lib/riskOfRuin.ts`
 
 ### Per-table timers
 
 Timers live on `active_tables` (`accumulated_ms`, `segment_started_at`,
 `is_paused`, `paused_at`). Product rules:
 
-- Starting a live session does **not** start time; the player taps **Play** on a table
+- Starting a live session does **not** start time; Play starts the table timer
 - New tables start **paused** at `0`
-- Only **one** table may run; Play on another is blocked until the running table is paused
+- Only **one** table may run; Play on another is blocked until pause + results
 - Banner elapsed and end-session `hoursPlayed` are the **sum** of table elapsed times
-- Banner Pause / Resume targets the currently running table (or resumes the last paused table)
-- On end: freeze running tables, set `hoursPlayed = max(0.01, msToHoursPlayed(sum))`, snapshot each table’s elapsed to `session_tables.elapsed_ms`
+- On end, snapshot each table’s elapsed to `session_tables.elapsed_ms`
 
 Helpers: `sumTableElapsedMs`, `assertCanPlayTable`, `computeElapsedMs` in `src/lib/liveTimer.ts`.
 
@@ -168,7 +185,7 @@ by `casinoId` then reuses the same stats helpers.
 flowchart TB
   UI["app screens + CasinoCard + TableRulesForm"]
   Ctx[SessionContext + LiveSessionContext]
-  Lib[src/lib/stats + format + liveTimer + tableRules + houseEdge]
+  Lib[src/lib/stats + format + liveTimer + sessionBudget + riskOfRuin + tableRules + houseEdge]
   Types[src/types/session + casino + liveSession + tableRules]
   Persist[sessionStore + casinoStore + liveSessionStore]
   Device[expo-sqlite]
