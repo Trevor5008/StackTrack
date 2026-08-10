@@ -12,6 +12,11 @@ App version is kept in sync in:
 
 ## [Unreleased]
 
+### Changed
+
+- Extract shared UI (`FormSheet`, `ActionButton`, `SessionTableCard`, `ActiveSessionBanner`, `SwipeableDeleteRow`) and `commonStyles` to shrink live/casino/session/dashboard screens without behavior changes
+- Colocate StyleSheets in `*.styles.ts` next to components and screens
+
 ## [1.1.0] - 2026-08-09
 
 ### Added

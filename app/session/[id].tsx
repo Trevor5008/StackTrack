@@ -1,7 +1,16 @@
+import { SessionForm } from '@/src/components/SessionForm';
+import { SessionTablesList } from '@/src/components/SessionTablesList';
+import { useSessions } from '@/src/context/SessionContext';
+import { confirmAction } from '@/src/lib/confirm';
+import { formatCurrency, formatDate, formatHours } from '@/src/lib/format';
+import { loadSessionTables } from '@/src/storage/liveSessionStore';
+import { SessionTable } from '@/src/types/liveSession';
+import { colors } from '@/src/theme';
+import { commonStyles } from '@/src/theme/commonStyles';
 import { HeaderBackButton } from '@react-navigation/elements';
 import { useNavigation } from '@react-navigation/native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
@@ -9,24 +18,11 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   View,
 } from 'react-native';
 
-import { RankBadge } from '@/src/components/RankBadge';
-import { SessionForm } from '@/src/components/SessionForm';
-import { useSessions } from '@/src/context/SessionContext';
-import { confirmAction } from '@/src/lib/confirm';
-import { formatCurrency, formatDate, formatHours, formatTableCardTitle } from '@/src/lib/format';
-import { formatElapsed } from '@/src/lib/liveTimer';
-import { formatHouseEdge } from '@/src/lib/houseEdge';
-import { estimateBasicStrategyRoR, formatRoR } from '@/src/lib/riskOfRuin';
-import { formatTableRulesSummary, parseTableRules } from '@/src/lib/tableRules';
-import { rankTables } from '@/src/lib/tableRanking';
-import { loadSessionTables } from '@/src/storage/liveSessionStore';
-import { SessionTable } from '@/src/types/liveSession';
-import { colors, radius, spacing } from '@/src/theme';
+import { styles } from './[id].styles';
 
 /**
  * Session detail screen
@@ -45,7 +41,6 @@ export default function SessionDetailScreen() {
   const [tables, setTables] = useState<SessionTable[]>([]);
   const [tablesLoading, setTablesLoading] = useState(true);
   const session = sessions.find((item) => item.id === sessionId);
-  const tableRanks = useMemo(() => rankTables(tables), [tables]);
 
   // Keep header back reliable (native default can go inert on this stack screen).
   useLayoutEffect(() => {
@@ -89,7 +84,7 @@ export default function SessionDetailScreen() {
   // Render loading indicator
   if (isLoading) {
     return (
-      <View style={styles.centered}>
+      <View style={commonStyles.centered}>
         <ActivityIndicator color={colors.primary} />
       </View>
     );
@@ -98,10 +93,10 @@ export default function SessionDetailScreen() {
   // Render not found
   if (!session) {
     return (
-      <View style={styles.centered}>
+      <View style={commonStyles.centered}>
         <Text style={styles.notFoundTitle}>Session not found</Text>
         <Pressable onPress={() => router.replace('/history')}>
-          <Text style={styles.link}>Return to history</Text>
+          <Text style={commonStyles.link}>Return to history</Text>
         </Pressable>
       </View>
     );
@@ -128,16 +123,16 @@ export default function SessionDetailScreen() {
     return (
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.screen}
+        style={commonStyles.screen}
       >
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={commonStyles.content}
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.editHeader}>
             <Text style={styles.heading}>Edit session</Text>
             <Pressable onPress={() => setEditing(false)}>
-              <Text style={styles.link}>Cancel</Text>
+              <Text style={commonStyles.link}>Cancel</Text>
             </Pressable>
           </View>
           <SessionForm
@@ -154,7 +149,6 @@ export default function SessionDetailScreen() {
             cashOut={session.cashOut}
             currency={settings.currency}
             loading={tablesLoading}
-            ranks={tableRanks}
             tables={tables}
           />
         </ScrollView>
@@ -164,7 +158,7 @@ export default function SessionDetailScreen() {
 
   return ( 
     // keyboard avoiding view to handle the keyboard on mobile devices
-    <ScrollView contentContainerStyle={styles.content} style={styles.screen}>
+    <ScrollView contentContainerStyle={commonStyles.content} style={commonStyles.screen}>
       <View style={styles.hero}>
         <Text style={styles.location}>{session.location}</Text>
         <Text style={styles.date}>{formatDate(session.date)}</Text>
@@ -211,7 +205,6 @@ export default function SessionDetailScreen() {
         cashOut={session.cashOut}
         currency={settings.currency}
         loading={tablesLoading}
-        ranks={tableRanks}
         tables={tables}
       />
 
@@ -232,7 +225,7 @@ export default function SessionDetailScreen() {
           onPress={() => setEditing(true)}
           style={({ pressed }) => [
             styles.editButton,
-            pressed && styles.pressed,
+            pressed && commonStyles.pressed,
           ]}
         >
           <Text style={styles.editButtonText}>Edit session</Text>
@@ -241,7 +234,7 @@ export default function SessionDetailScreen() {
           onPress={confirmDelete}
           style={({ pressed }) => [
             styles.deleteButton,
-            pressed && styles.pressed,
+            pressed && commonStyles.pressed,
           ]}
         >
           <Text style={styles.deleteButtonText}>Delete session</Text>
@@ -266,305 +259,3 @@ function DetailRow({ label, value }: { label: string; value: string }) {
     </View>
   );
 }
-
-function SessionTablesList({
-  currency,
-  loading,
-  ranks,
-  tables,
-  cashOut,
-}: {
-  currency: string;
-  loading: boolean;
-  ranks: ReturnType<typeof rankTables>;
-  tables: SessionTable[];
-  cashOut: number;
-}) {
-  return (
-    <View style={styles.tablesSection}>
-      <Text style={styles.sectionTitle}>Tables</Text>
-      {loading ? (
-        <ActivityIndicator color={colors.primary} />
-      ) : tables.length === 0 ? (
-        <Text style={styles.emptyTables}>
-          No per-table breakdown for this session.
-        </Text>
-      ) : (
-        <View style={styles.tableList}>
-          {tables.map((table) => {
-            const rules = parseTableRules(table.rulesJson);
-            const rank = ranks.get(table.id);
-            return (
-              <View
-                key={table.id}
-                style={[
-                  styles.tableRow,
-                  rank?.isBest && styles.tableRowBest,
-                ]}
-              >
-                <RankBadge
-                  houseEdge={rank?.houseEdge}
-                  tier={rank?.tier}
-                  isBest={rank?.isBest}
-                />
-                <View style={styles.tableMain}>
-                  {(() => {
-                    const { title, subtitle } = formatTableCardTitle(
-                      rules,
-                      currency,
-                      table.name,
-                    );
-                    return (
-                      <>
-                        <Text style={styles.tableName}>{title}</Text>
-                        {subtitle ? (
-                          <Text style={styles.tableSubtitle}>{subtitle}</Text>
-                        ) : null}
-                      </>
-                    );
-                  })()}
-                  {rank?.isBest ? (
-                    <Text style={styles.bestRulesLabel}>Best rules</Text>
-                  ) : null}
-                  {table.elapsedMs > 0 ? (
-                    <Text style={styles.tableElapsed}>
-                      {formatElapsed(table.elapsedMs)}
-                    </Text>
-                  ) : null}
-                  {(() => {
-                    const ror = estimateBasicStrategyRoR({
-                      remainingBudget: cashOut,
-                      bettingUnit: table.bettingUnit,
-                      rules,
-                    });
-                    if (!ror) {
-                      return (
-                        <Text style={styles.tableElapsed}>RoR unknown</Text>
-                      );
-                    }
-                    return (
-                      <Text style={styles.tableElapsed}>
-                        Unit{' '}
-                        {formatCurrency(table.bettingUnit ?? 0, currency)} · RoR{' '}
-                        {formatRoR(ror.rorPct)}
-                      </Text>
-                    );
-                  })()}
-                  <Text style={styles.tableRules}>
-                    {rules
-                      ? `${formatTableRulesSummary(rules)}${
-                          rank?.houseEdge != null
-                            ? ` · ${formatHouseEdge(rank.houseEdge)} HE`
-                            : ''
-                        }`
-                      : 'No rules set'}
-                  </Text>
-                </View>
-                <Text
-                  style={[
-                    styles.tablePnL,
-                    {
-                      color:
-                        table.netResult >= 0
-                          ? colors.positive
-                          : colors.negative,
-                    },
-                  ]}
-                >
-                  {formatCurrency(table.netResult, currency, true)}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      )}
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  screen: {
-    backgroundColor: colors.background,
-    flex: 1,
-  },
-  content: {
-    gap: spacing.lg,
-    padding: spacing.md,
-    paddingBottom: spacing.xl,
-  },
-  centered: {
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    flex: 1,
-    gap: spacing.md,
-    justifyContent: 'center',
-  },
-  notFoundTitle: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  link: {
-    color: colors.primary,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  editHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  heading: {
-    color: colors.text,
-    fontSize: 25,
-    fontWeight: '800',
-  },
-  hero: {
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-  },
-  location: {
-    color: colors.text,
-    fontSize: 24,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  date: {
-    color: colors.textMuted,
-    marginTop: spacing.xs,
-  },
-  netResult: {
-    fontSize: 42,
-    fontWeight: '800',
-    marginTop: spacing.lg,
-  },
-  netLabel: {
-    color: colors.textMuted,
-    fontSize: 12,
-    textTransform: 'uppercase',
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    padding: spacing.md,
-  },
-  detailRow: {
-    borderBottomColor: colors.border,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: spacing.xs,
-    paddingVertical: spacing.md,
-  },
-  detailLabel: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  detailValue: {
-    color: colors.text,
-    fontSize: 16,
-    lineHeight: 23,
-  },
-  tablesSection: {
-    gap: spacing.md,
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  emptyTables: {
-    color: colors.textMuted,
-  },
-  tableList: {
-    gap: spacing.sm,
-  },
-  tableRow: {
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: spacing.md,
-    padding: spacing.md,
-  },
-  tableRowBest: {
-    borderColor: colors.primary,
-    borderWidth: 2,
-  },
-  tableMain: {
-    flex: 1,
-  },
-  tableName: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  tableSubtitle: {
-    color: colors.textMuted,
-    fontSize: 13,
-    marginTop: 2,
-  },
-  tableElapsed: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontVariant: ['tabular-nums'],
-    marginTop: 2,
-  },
-  bestRulesLabel: {
-    color: colors.primary,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-    marginTop: 2,
-    textTransform: 'uppercase',
-  },
-  tableRules: {
-    color: colors.textMuted,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  tablePnL: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  metadata: {
-    gap: spacing.xs,
-  },
-  metadataText: {
-    color: colors.textMuted,
-    fontSize: 11,
-  },
-  actions: {
-    gap: spacing.sm,
-  },
-  editButton: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    minHeight: 50,
-    justifyContent: 'center',
-  },
-  editButtonText: {
-    color: colors.background,
-    fontWeight: '800',
-  },
-  deleteButton: {
-    alignItems: 'center',
-    borderColor: colors.negative,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    minHeight: 50,
-    justifyContent: 'center',
-  },
-  deleteButtonText: {
-    color: colors.negative,
-    fontWeight: '700',
-  },
-  pressed: {
-    opacity: 0.75,
-  },
-});

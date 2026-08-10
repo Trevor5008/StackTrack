@@ -1,13 +1,13 @@
-import { MaterialIcons } from '@expo/vector-icons';
-import { useRef } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Swipeable } from 'react-native-gesture-handler';
+import { Pressable, Text, View } from 'react-native';
 
+import { SwipeableDeleteRow } from '@/src/components/SwipeableDeleteRow';
 import { useLiveSession } from '@/src/context/LiveSessionContext';
 import { useSessions } from '@/src/context/SessionContext';
 import { confirmAction } from '@/src/lib/confirm';
 import { formatCurrency, formatHours } from '@/src/lib/format';
-import { colors, radius, spacing } from '@/src/theme';
+import { colors } from '@/src/theme';
+
+import { styles } from './CasinoCard.styles';
 
 type CasinoCardProps = {
   casinoId: string;
@@ -30,9 +30,8 @@ export function CasinoCard({
 }: CasinoCardProps) {
   const { deleteCasino } = useSessions();
   const { activeSession, refresh: refreshLive } = useLiveSession();
-  const swipeableRef = useRef<Swipeable>(null);
 
-  const onDeletePress = () => {
+  const onDelete = (close: () => void) => {
     const liveHere = activeSession?.casinoId === casinoId;
     const sessionPart =
       sessionCount > 0
@@ -50,7 +49,7 @@ export function CasinoCard({
         destructive: true,
       },
       async () => {
-        swipeableRef.current?.close();
+        close();
         await deleteCasino(casinoId);
         if (liveHere) {
           await refreshLive();
@@ -92,76 +91,11 @@ export function CasinoCard({
   );
 
   return (
-    <Swipeable
-      ref={swipeableRef}
-      friction={2}
-      overshootRight={false}
-      renderRightActions={() => (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Delete casino"
-          onPress={onDeletePress}
-          style={({ pressed }) => [
-            styles.deleteAction,
-            pressed && styles.deletePressed,
-          ]}
-        >
-          <MaterialIcons name="delete-outline" size={26} color={colors.white} />
-        </Pressable>
-      )}
+    <SwipeableDeleteRow
+      accessibilityLabel="Delete casino"
+      onDelete={onDelete}
     >
       {card}
-    </Swipeable>
+    </SwipeableDeleteRow>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    gap: spacing.xs,
-    padding: spacing.md,
-  },
-  pressed: {
-    opacity: 0.85,
-  },
-  top: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  name: {
-    color: colors.text,
-    flex: 1,
-    fontSize: 18,
-    fontWeight: '800',
-    marginRight: spacing.sm,
-  },
-  chevron: {
-    color: colors.textMuted,
-    fontSize: 24,
-  },
-  pnl: {
-    fontSize: 22,
-    fontWeight: '800',
-    marginTop: spacing.xs,
-  },
-  meta: {
-    color: colors.textMuted,
-    fontSize: 13,
-  },
-  deleteAction: {
-    alignItems: 'center',
-    backgroundColor: colors.negative,
-    borderRadius: radius.md,
-    justifyContent: 'center',
-    marginLeft: spacing.sm,
-    minWidth: 72,
-    paddingHorizontal: spacing.md,
-  },
-  deletePressed: {
-    opacity: 0.85,
-  },
-});

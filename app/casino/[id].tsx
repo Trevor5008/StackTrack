@@ -1,21 +1,7 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useNavigation } from '@react-navigation/native';
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-
+import { ActiveSessionBanner } from '@/src/components/ActiveSessionBanner';
 import { SessionListItem } from '@/src/components/SessionListItem';
 import { StatCard } from '@/src/components/StatCard';
+import { FormSheet } from '@/src/components/FormSheet';
 import { TextField } from '@/src/components/TextField';
 import { useLiveSession } from '@/src/context/LiveSessionContext';
 import { useSessions } from '@/src/context/SessionContext';
@@ -35,7 +21,21 @@ import {
 } from '@/src/lib/stats';
 import { getCasino } from '@/src/storage/casinoStore';
 import { Casino } from '@/src/types/casino';
-import { colors, radius, spacing } from '@/src/theme';
+import { colors } from '@/src/theme';
+import { commonStyles } from '@/src/theme/commonStyles';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+
+import { styles } from './[id].styles';
 
 export default function CasinoScreen() {
   const navigation = useNavigation();
@@ -103,7 +103,7 @@ export default function CasinoScreen() {
 
   if (isLoading || liveLoading || (!casino && !lookupDone)) {
     return (
-      <View style={styles.centered}>
+      <View style={commonStyles.centered}>
         <ActivityIndicator color={colors.primary} size="large" />
       </View>
     );
@@ -111,10 +111,10 @@ export default function CasinoScreen() {
 
   if (!casino) {
     return (
-      <View style={styles.centered}>
+      <View style={commonStyles.centered}>
         <Text style={styles.missing}>Casino not found</Text>
         <Pressable onPress={() => router.replace('/')}>
-          <Text style={styles.link}>Back to Dashboard</Text>
+          <Text style={commonStyles.link}>Back to Dashboard</Text>
         </Pressable>
       </View>
     );
@@ -201,13 +201,13 @@ export default function CasinoScreen() {
   return (
     <>
     <ScrollView
-      contentContainerStyle={styles.content}
-      style={styles.screen}
+      contentContainerStyle={commonStyles.content}
+      style={commonStyles.screen}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
       <View>
-        <Text style={styles.eyebrow}>CASINO</Text>
+        <Text style={[commonStyles.eyebrow, styles.eyebrowGap]}>CASINO</Text>
         {editingName ? (
           <View style={styles.renameBlock}>
             <TextInput
@@ -241,7 +241,7 @@ export default function CasinoScreen() {
             delayLongPress={350}
             accessibilityRole="button"
             accessibilityHint="Long press to rename"
-            style={({ pressed }) => pressed && styles.pressed}
+            style={({ pressed }) => pressed && commonStyles.pressed}
           >
             <Text style={styles.heading}>{casino.name}</Text>
           </Pressable>
@@ -249,28 +249,16 @@ export default function CasinoScreen() {
       </View>
 
       {activeSession ? (
-        <Pressable
-          onPress={() => router.push('/live')}
-          style={({ pressed }) => [
-            styles.liveBanner,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Text style={styles.liveEyebrow}>
-            {liveHere ? 'SESSION IN PROGRESS HERE' : 'SESSION IN PROGRESS'}
-          </Text>
-          <Text style={styles.liveHint}>
-            {liveHere
-              ? 'Tap to continue this casino’s live session'
-              : `Active at ${activeSession.location} — tap to open`}
-          </Text>
-        </Pressable>
+        <ActiveSessionBanner
+          location={activeSession.location}
+          here={liveHere}
+        />
       ) : (
         <Pressable
           onPress={openStartModal}
           style={({ pressed }) => [
             styles.startButton,
-            pressed && styles.pressed,
+            pressed && commonStyles.pressed,
           ]}
         >
           <Text style={styles.startButtonText}>Start live session</Text>
@@ -306,7 +294,7 @@ export default function CasinoScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Recent at this casino</Text>
+        <Text style={commonStyles.sectionTitle}>Recent at this casino</Text>
         {casinoSessions.length === 0 ? (
           <Text style={styles.empty}>
             No sessions yet. Start a live session to begin tracking here.
@@ -326,278 +314,53 @@ export default function CasinoScreen() {
       </View>
     </ScrollView>
 
-    <Modal
+    <FormSheet
       visible={starting}
-      animationType="slide"
-      transparent
-      onRequestClose={() => setStarting(false)}
+      title="Start session"
+      onClose={() => setStarting(false)}
+      primaryLabel="Start"
+      savingLabel="Starting…"
+      onPrimary={() => void onConfirmStart()}
+      saving={savingStart}
+      error={startError}
+      header={
+        <Text style={styles.modalHint}>
+          Available bankroll: {formatCurrency(bankroll, currency)}
+        </Text>
+      }
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.modalBackdrop}
-      >
-        <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>Start session</Text>
-          <Text style={styles.modalHint}>
-            Available bankroll: {formatCurrency(bankroll, currency)}
-          </Text>
-          <TextField
-            label="Session budget"
-            keyboardType="numeric"
-            value={budgetInput}
-            onChangeText={setBudgetInput}
-          />
-          <Text style={styles.modalHint}>Risk tolerance (max RoR)</Text>
-          <View style={styles.toleranceRow}>
-            {RISK_TOLERANCE_PRESETS.map((preset) => {
-              const selected = riskTolerance === preset;
-              return (
-                <Pressable
-                  key={preset}
-                  onPress={() => setRiskTolerance(preset)}
-                  style={[
-                    styles.toleranceChip,
-                    selected && styles.toleranceChipSelected,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.toleranceChipText,
-                      selected && styles.toleranceChipTextSelected,
-                    ]}
-                  >
-                    {preset}%
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          {startError ? (
-            <Text style={styles.startError}>{startError}</Text>
-          ) : null}
-          <View style={styles.modalActions}>
+      <TextField
+        label="Session budget"
+        keyboardType="numeric"
+        value={budgetInput}
+        onChangeText={setBudgetInput}
+      />
+      <Text style={styles.modalHint}>Risk tolerance (max RoR)</Text>
+      <View style={styles.toleranceRow}>
+        {RISK_TOLERANCE_PRESETS.map((preset) => {
+          const selected = riskTolerance === preset;
+          return (
             <Pressable
-              onPress={() => setStarting(false)}
-              style={styles.secondaryButton}
-            >
-              <Text style={styles.secondaryButtonText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => void onConfirmStart()}
-              disabled={savingStart}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                pressed && styles.pressed,
-                savingStart && styles.disabled,
+              key={preset}
+              onPress={() => setRiskTolerance(preset)}
+              style={[
+                styles.toleranceChip,
+                selected && styles.toleranceChipSelected,
               ]}
             >
-              <Text style={styles.primaryButtonText}>
-                {savingStart ? 'Starting…' : 'Start'}
+              <Text
+                style={[
+                  styles.toleranceChipText,
+                  selected && styles.toleranceChipTextSelected,
+                ]}
+              >
+                {preset}%
               </Text>
             </Pressable>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+          );
+        })}
+      </View>
+    </FormSheet>
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    backgroundColor: colors.background,
-    flex: 1,
-  },
-  content: {
-    gap: spacing.lg,
-    padding: spacing.md,
-    paddingBottom: spacing.xl,
-  },
-  centered: {
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    flex: 1,
-    gap: spacing.md,
-    justifyContent: 'center',
-  },
-  missing: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  link: {
-    color: colors.primary,
-    fontWeight: '700',
-  },
-  eyebrow: {
-    color: colors.primary,
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 2,
-    marginBottom: spacing.xs,
-  },
-  heading: {
-    color: colors.text,
-    fontSize: 28,
-    fontWeight: '800',
-  },
-  renameBlock: {
-    gap: spacing.xs,
-  },
-  headingInput: {
-    backgroundColor: colors.input,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    color: colors.text,
-    fontSize: 28,
-    fontWeight: '800',
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  renameHint: {
-    color: colors.textMuted,
-    fontSize: 12,
-  },
-  renameError: {
-    color: colors.negative,
-    fontSize: 12,
-  },
-  startButton: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    justifyContent: 'center',
-    minHeight: 52,
-  },
-  startButtonText: {
-    color: colors.background,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  liveBanner: {
-    backgroundColor: colors.surface,
-    borderColor: colors.primary,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    gap: spacing.xs,
-    padding: spacing.md,
-  },
-  liveEyebrow: {
-    color: colors.primary,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1.2,
-  },
-  liveHint: {
-    color: colors.textMuted,
-    fontSize: 13,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-  },
-  section: {
-    gap: spacing.md,
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  list: {
-    gap: spacing.sm,
-  },
-  empty: {
-    color: colors.textMuted,
-    textAlign: 'center',
-  },
-  pressed: {
-    opacity: 0.8,
-  },
-  modalBackdrop: {
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalCard: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    gap: spacing.sm,
-    padding: spacing.lg,
-    paddingBottom: spacing.xl,
-  },
-  modalTitle: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '800',
-  },
-  modalHint: {
-    color: colors.textMuted,
-    marginBottom: spacing.xs,
-  },
-  toleranceRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-  },
-  toleranceChip: {
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    minWidth: 52,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  toleranceChipSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  toleranceChipText: {
-    color: colors.text,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  toleranceChipTextSelected: {
-    color: colors.background,
-  },
-  startError: {
-    color: colors.negative,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  primaryButton: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: 48,
-  },
-  primaryButtonText: {
-    color: colors.background,
-    fontWeight: '800',
-  },
-  secondaryButton: {
-    alignItems: 'center',
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: 48,
-  },
-  secondaryButtonText: {
-    color: colors.text,
-    fontWeight: '700',
-  },
-  disabled: {
-    opacity: 0.6,
-  },
-});
