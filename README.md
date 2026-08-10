@@ -72,12 +72,18 @@ stacktrack/
 │       └── [id].tsx              # Session detail / edit / delete
 ├── src/
 │   ├── components/               # Shared UI
+│   │   ├── ActionButton.tsx      # Primary / secondary / danger buttons
+│   │   ├── ActiveSessionBanner.tsx
 │   │   ├── BankrollTrend.tsx
 │   │   ├── CasinoCard.tsx
+│   │   ├── FormSheet.tsx         # Bottom-sheet modal chrome
 │   │   ├── RankBadge.tsx
 │   │   ├── SessionForm.tsx
 │   │   ├── SessionListItem.tsx
+│   │   ├── SessionTableCard.tsx  # Live + summary table rows
+│   │   ├── SessionTablesList.tsx
 │   │   ├── StatCard.tsx
+│   │   ├── SwipeableDeleteRow.tsx
 │   │   ├── TableRulesForm.tsx
 │   │   └── TextField.tsx         # Shared input + keyboard dismiss
 │   ├── context/
@@ -109,7 +115,9 @@ stacktrack/
 │   │   ├── liveSession.ts        # Live session + table types
 │   │   ├── session.ts            # Session + settings types
 │   │   └── tableRules.ts         # Blackjack table rules shape
-│   └── theme.ts                  # Colors, spacing, radius
+│   ├── theme.ts                  # Colors, spacing, radius
+│   └── theme/
+│       └── commonStyles.ts       # Shared screen chrome styles
 ├── docs/
 │   ├── schema.md                 # Data model
 │   └── flow.md                   # App flow diagrams
@@ -130,6 +138,8 @@ StackTrack uses [Semantic Versioning](https://semver.org/) and
   move them into a dated version section when you cut a release
 - Domain code lives under **`src/`** (including `src/components`). Empty root
   `components/` / `constants/` folders from the Expo template were removed
+- UI styles live in colocated `*.styles.ts` next to components and screens;
+  shared chrome tokens are in `src/theme/commonStyles.ts`
 
 ## Docs
 

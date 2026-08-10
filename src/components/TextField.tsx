@@ -3,14 +3,15 @@ import { useRef, useState } from 'react';
 import {
   Keyboard,
   Pressable,
-  StyleSheet,
   Text,
   TextInput,
   TextInputProps,
   View,
 } from 'react-native';
 
-import { colors, radius, spacing } from '@/src/theme';
+import { colors } from '@/src/theme';
+
+import { styles } from './TextField.styles';
 
 type TextFieldProps = {
   label?: string;
@@ -87,60 +88,3 @@ export function TextField({
     </View>
   );
 }
-
-/**
- * Styles for the TextField component.
- */
-const styles = StyleSheet.create({
-  /**
-   * Styles for the outer field wrapper.
-   */
-  field: {
-    gap: spacing.xs,
-  },
-  /**
-   * Styles for the label.
-   */
-  label: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  inputRow: {
-    alignItems: 'center',
-    backgroundColor: colors.input,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flexDirection: 'row',
-    minHeight: 44,
-    paddingRight: spacing.xs,
-  },
-  inputRowMultiline: {
-    alignItems: 'flex-start',
-  },
-  input: {
-    color: colors.text,
-    flex: 1,
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  multiline: {
-    minHeight: 88,
-    textAlignVertical: 'top',
-  },
-  dismissButton: {
-    alignItems: 'center',
-    height: 36,
-    justifyContent: 'center',
-    width: 36,
-  },
-  dismissButtonMultiline: {
-    marginTop: spacing.xs,
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-});

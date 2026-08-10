@@ -4,7 +4,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  StyleSheet,
   Text,
   View,
 } from 'react-native';
@@ -12,7 +11,8 @@ import {
 import { SessionForm } from '@/src/components/SessionForm';
 import { useSessions } from '@/src/context/SessionContext';
 import { currentBankroll } from '@/src/lib/stats';
-import { colors, spacing } from '@/src/theme';
+
+import { styles } from './add-session.styles';
 
 /**
  * Add session screen
@@ -67,37 +67,3 @@ export default function AddSessionScreen() {
     </KeyboardAvoidingView>
   );
 }
-
-/**
- * Styles for the add session screen
- * @returns {StyleSheet}
- * @description This styles are used to style the add session screen.
- * @example
- * <AddSessionScreen />
- */
-const styles = StyleSheet.create({
-  // screen to handle the screen style
-  screen: {
-    backgroundColor: colors.background,
-    flex: 1,
-  },
-  // content to handle the content style
-  content: {
-    gap: spacing.lg,
-    padding: spacing.md,
-    paddingBottom: spacing.xl * 2,
-  },
-  // heading to handle the heading style
-  heading: {
-    color: colors.text,
-    fontSize: 25,
-    fontWeight: '800',
-    marginBottom: spacing.xs,
-  },
-  // subtitle to handle the subtitle style
-  subtitle: {
-    color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-});

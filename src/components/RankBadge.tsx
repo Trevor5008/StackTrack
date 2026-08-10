@@ -1,7 +1,9 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { FavorabilityTier, formatHouseEdge } from '@/src/lib/houseEdge';
-import { colors, radius, spacing } from '@/src/theme';
+import { colors } from '@/src/theme';
+
+import { styles } from './RankBadge.styles';
 
 type RankBadgeProps = {
   houseEdge?: number | null;
@@ -58,37 +60,3 @@ export function RankBadge({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: {
-    alignItems: 'center',
-    gap: 2,
-    minWidth: 52,
-  },
-  badge: {
-    alignItems: 'center',
-    backgroundColor: colors.surfaceElevated,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    justifyContent: 'center',
-    minHeight: 28,
-    minWidth: 48,
-    paddingHorizontal: spacing.sm,
-  },
-  badgeBest: {
-    borderWidth: 2,
-  },
-  text: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  bestCaption: {
-    color: colors.primary,
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-});

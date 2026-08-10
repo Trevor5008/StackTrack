@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
+import { ActionButton } from '@/src/components/ActionButton';
 import { TextField } from '@/src/components/TextField';
-import { colors, radius, spacing } from '@/src/theme';
 import {
   BlackjackPayout,
   Dealer17,
@@ -12,6 +12,8 @@ import {
   PAYOUT_OPTIONS,
   TableRules,
 } from '@/src/types/tableRules';
+
+import { styles } from './TableRulesForm.styles';
 
 type TableRulesFormProps = {
   initialRules: TableRules;
@@ -155,116 +157,18 @@ export function TableRulesForm({
       />
 
       <View style={styles.actions}>
-        <Pressable
+        <ActionButton
+          label="Cancel"
           onPress={onCancel}
+          variant="secondary"
           disabled={saving}
-          style={({ pressed }) => [
-            styles.secondaryButton,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Text style={styles.secondaryButtonText}>Cancel</Text>
-        </Pressable>
-        <Pressable
+        />
+        <ActionButton
+          label={saving ? 'Saving…' : 'Save rules'}
           onPress={() => void onSave(rules)}
           disabled={saving}
-          style={({ pressed }) => [
-            styles.primaryButton,
-            pressed && styles.pressed,
-            saving && styles.disabled,
-          ]}
-        >
-          <Text style={styles.primaryButtonText}>
-            {saving ? 'Saving…' : 'Save rules'}
-          </Text>
-        </Pressable>
+        />
       </View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  form: {
-    gap: spacing.md,
-  },
-  title: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '800',
-    marginBottom: spacing.xs,
-  },
-  field: {
-    gap: spacing.sm,
-  },
-  fieldLabel: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  chip: {
-    backgroundColor: colors.input,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    minHeight: 40,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-  },
-  chipSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  chipText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  chipTextSelected: {
-    color: colors.background,
-    fontWeight: '800',
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  primaryButton: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
-  },
-  primaryButtonText: {
-    color: colors.background,
-    fontWeight: '800',
-  },
-  secondaryButton: {
-    alignItems: 'center',
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
-  },
-  secondaryButtonText: {
-    color: colors.text,
-    fontWeight: '700',
-  },
-  pressed: {
-    opacity: 0.8,
-  },
-  disabled: {
-    opacity: 0.6,
-  },
-});
