@@ -1,5 +1,6 @@
 import { Session, WinLossRecord } from '@/src/types/session';
 
+// Get the sessions for a casino
 export function sessionsForCasino(
   sessions: Session[],
   casinoId: string,

@@ -26,7 +26,7 @@ type LiveSessionTableCardProps = {
   table: ActiveTable;
   currency: string;
   rank?: TableRankInfo;
-  remainingBudget: number;
+  sessionBankroll: number;
   riskTolerance: number;
   onPlay: () => void;
   onPause: () => void;
@@ -39,8 +39,8 @@ type SummarySessionTableCardProps = {
   table: SessionTable;
   currency: string;
   rank?: TableRankInfo;
-  /** Budget depth for RoR estimate (typically session cash-out). */
-  remainingBudget: number;
+  /** Session chips still yours (cash-out after end; budget + nets while live). */
+  sessionBankroll: number;
 };
 
 export type SessionTableCardProps =
@@ -58,7 +58,7 @@ function SummaryTableCard({
   table,
   currency,
   rank,
-  remainingBudget,
+  sessionBankroll,
 }: SummarySessionTableCardProps) {
   const rules = parseTableRules(table.rulesJson);
   const { title, subtitle } = formatTableCardTitle(
@@ -67,7 +67,7 @@ function SummaryTableCard({
     table.name,
   );
   const ror = estimateBasicStrategyRoR({
-    remainingBudget,
+    sessionBankroll,
     bettingUnit: table.bettingUnit,
     rules,
   });
@@ -123,11 +123,12 @@ function SummaryTableCard({
   );
 }
 
+// Live table card component
 function LiveTableCard({
   table,
   currency,
   rank,
-  remainingBudget,
+  sessionBankroll,
   riskTolerance,
   onPlay,
   onPause,
@@ -146,14 +147,17 @@ function LiveTableCard({
     isPaused: table.isPaused,
     segmentStartedAt: table.segmentStartedAt,
   });
+  // Estimate the basic strategy RoR
   const ror = estimateBasicStrategyRoR({
-    remainingBudget,
+    sessionBankroll,
     bettingUnit: table.bettingUnit,
     rules,
   });
+  // Check if the table is viable
   const viable =
     ror != null ? isTableViable(ror.rorPct, riskTolerance) : null;
 
+  // Return/render the live table card component
   return (
     <View style={[styles.card, rank?.isBest && styles.cardBest]}>
       <Pressable
@@ -189,6 +193,7 @@ function LiveTableCard({
           >
             {formatCurrency(table.netResult, currency, true)}
           </Text>
+          {/* Display the RoR if it is available and viable */}
           {ror ? (
             <Text
               style={[
@@ -202,6 +207,7 @@ function LiveTableCard({
               {viable ? ' · Viable' : ' · Not viable'}
             </Text>
           ) : (
+            // Display RoR unknown if it is not available
             <Text style={styles.rorUnknown}>RoR unknown</Text>
           )}
         </View>

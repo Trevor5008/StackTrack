@@ -2,7 +2,8 @@ import { StyleSheet } from 'react-native';
 
 import { colors, spacing } from '@/src/theme';
 
-export const styles = StyleSheet.create({
+// Styles for the not found screen
+const styles = StyleSheet.create({
   // container to handle the container style
   container: {
     // flex to handle the flex
@@ -33,3 +34,5 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
+export default styles;

@@ -2,6 +2,7 @@ import { StyleSheet } from 'react-native';
 
 import { colors, radius, spacing } from '@/src/theme';
 
+// Styles for the casino screen
 export const styles = StyleSheet.create({
   missing: {
     color: colors.text,
@@ -96,3 +97,5 @@ export const styles = StyleSheet.create({
     color: colors.background,
   },
 });
+
+export default styles;

@@ -2,6 +2,7 @@ import { StyleSheet } from 'react-native';
 
 import { colors, spacing } from '@/src/theme';
 
+// Styles for the add session screen
 export const styles = StyleSheet.create({
   // screen to handle the screen style
   screen: {
@@ -28,3 +29,4 @@ export const styles = StyleSheet.create({
     lineHeight: 20,
   },
 });
+export default styles;

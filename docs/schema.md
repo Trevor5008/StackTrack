@@ -116,8 +116,10 @@ chips; `net_result += ending − stake`, stake clears, ending returns to
 **Risk of Ruin (basic strategy heuristic):** unknown until `rules_json` and
 `betting_unit` are set. Then
 `rorPct = 100 * exp(-units / (10 * max(HE, 0.05)))` with
-`units = remaining_budget / betting_unit`. Table is **not viable** when
-`rorPct > risk_tolerance`. See `src/lib/riskOfRuin.ts`.
+`units = session_bankroll / betting_unit`. Session bankroll is
+`remaining_budget + open stakes` (`budget + sum(net_result)`), so Play does
+not zero units. Table is **not viable** when `rorPct > risk_tolerance`.
+See `src/lib/riskOfRuin.ts` and `computeSessionBankroll`.
 
 ### session_tables
 

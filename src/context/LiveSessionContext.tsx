@@ -129,12 +129,15 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
       return;
     }
 
+    // time duration of the session is the sum of the elapsed time of all tables
     const tick = () => setElapsedMs(sumTableElapsedMs(tables));
     tick();
     const id = setInterval(tick, 1000);
+    // clear the interval when the component unmounts
     return () => clearInterval(id);
   }, [tables]);
 
+  // start a new session
   const startSession = useCallback(
     async (input: StartLiveSessionInput) => {
       const startingBankroll =
@@ -156,13 +159,17 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
     [settings.startingBankroll],
   );
 
+  // Pause the table timer and update the session budget based on results
   const pauseTable = useCallback(
     async (id: string, endingChips: number) => {
       if (!activeSession) {
         throw new Error('No live session in progress.');
       }
+      // validate the ending chips
       assertEndingChips(endingChips);
+      // find the table
       const current = tables.find((table) => table.id === id);
+      // if the table is not found or is already paused, return
       if (!current || current.isPaused) return;
       if (current.stake <= 0) {
         throw new Error('This table has no stake to settle.');
@@ -200,12 +207,15 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
     [activeSession, tables],
   );
 
+  // Play a table and update the session budget based on results
   const playTable = useCallback(
     async (id: string, stake: number, bettingUnit: number) => {
       if (!activeSession) {
         throw new Error('No live session in progress.');
       }
+      // validate the table
       assertCanPlayTable(tables, id);
+      // validate the stake
       const available = computeRemainingBudget(activeSession.buyIn, tables);
       assertStake(stake, available);
       const current = tables.find((table) => table.id === id);
@@ -390,6 +400,7 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
   );
 }
 
+// Custom hook to access the live session context
 export function useLiveSession(): LiveSessionContextValue {
   const context = useContext(LiveSessionContext);
   if (!context) {

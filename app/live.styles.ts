@@ -2,7 +2,9 @@ import { Platform, StyleSheet } from 'react-native';
 
 import { colors, radius, spacing } from '@/src/theme';
 
+// Styles for the live screen
 export const styles = StyleSheet.create({
+  // empty title to handle the empty title style
   emptyTitle: {
     color: colors.text,
     fontSize: 20,
@@ -93,3 +95,5 @@ export const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
 });
+
+export default styles;

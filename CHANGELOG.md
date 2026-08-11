@@ -17,6 +17,7 @@ App version is kept in sync in:
 - Extract shared UI (`FormSheet`, `ActionButton`, `SessionTableCard`, `ActiveSessionBanner`, `SwipeableDeleteRow`) and `commonStyles` to shrink live/casino/session/dashboard screens without behavior changes
 - Colocate StyleSheets in `*.styles.ts` next to components and screens
 - Squash stepwise SQLite v1–v6 migrators into a single v6 schema script (wipe local `stacktrack.db` if upgrading from a pre-v6 file)
+- RoR units use session bankroll (remaining + open stakes) so Play no longer reports 99.9% ruin
 
 ## [1.1.0] - 2026-08-09
 

@@ -8,6 +8,7 @@ import { useSessions } from '@/src/context/SessionContext';
 import { confirmAction } from '@/src/lib/confirm';
 import { formatCurrency } from '@/src/lib/format';
 import { formatElapsed, msToHoursPlayed } from '@/src/lib/liveTimer';
+import { computeSessionBankroll } from '@/src/lib/sessionBudget';
 import {
   estimateBasicStrategyRoR,
   formatRoR,
@@ -79,6 +80,10 @@ export default function LiveSessionScreen() {
   const runningTable = tables.find((table) => table.id === runningTableId);
   const allPaused = !runningTableId;
   const budget = activeSession?.buyIn ?? 0;
+  const sessionBankroll = useMemo(
+    () => computeSessionBankroll(budget, tables),
+    [budget, tables],
+  );
   const sessionNet = remainingBudget - budget;
   const moneyTable = moneyModal
     ? tables.find((table) => table.id === moneyModal.tableId)
@@ -91,14 +96,14 @@ export default function LiveSessionScreen() {
     if (moneyModal?.kind !== 'stake' || !activeSession) return null;
     const unit = Number(bettingUnitInput);
     return estimateBasicStrategyRoR({
-      remainingBudget,
+      sessionBankroll,
       bettingUnit: Number.isFinite(unit) && unit > 0 ? unit : null,
       rules: moneyTableRules,
     });
   }, [
     moneyModal?.kind,
     activeSession,
-    remainingBudget,
+    sessionBankroll,
     bettingUnitInput,
     moneyTableRules,
   ]);
@@ -352,7 +357,7 @@ export default function LiveSessionScreen() {
                 table={table}
                 currency={currency}
                 rank={tableRanks.get(table.id)}
-                remainingBudget={remainingBudget}
+                sessionBankroll={sessionBankroll}
                 riskTolerance={activeSession.riskTolerance}
                 onPlay={() => openStakeModal(table.id)}
                 onPause={() => openResultsModal(table.id)}

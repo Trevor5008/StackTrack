@@ -89,6 +89,7 @@ export async function ensureCasino(name: string): Promise<Casino> {
   return addCasino(trimmed);
 }
 
+// Provides ability to rename a casino
 export async function renameCasino(
   id: string,
   name: string,
@@ -158,6 +159,7 @@ export async function deleteCasino(id: string): Promise<void> {
   });
 }
 
+// Clear all casinos from the database
 export async function clearCasinos(): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM casinos');

@@ -2,6 +2,7 @@ import { StyleSheet } from 'react-native';
 
 import { colors, spacing } from '@/src/theme';
 
+// Styles for the history screen
 export const styles = StyleSheet.create({
   // screen to handle the screen style
   screen: {
@@ -42,3 +43,5 @@ export const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+export default styles;

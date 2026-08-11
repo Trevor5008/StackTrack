@@ -42,7 +42,7 @@ export function SessionTablesList({
               table={table}
               currency={currency}
               rank={ranks.get(table.id)}
-              remainingBudget={cashOut}
+              sessionBankroll={cashOut}
             />
           ))}
         </View>

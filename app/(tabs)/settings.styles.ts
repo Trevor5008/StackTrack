@@ -2,6 +2,7 @@ import { StyleSheet } from 'react-native';
 
 import { colors, radius, spacing } from '@/src/theme';
 
+// Styles for the settings screen
 export const styles = StyleSheet.create({
   // screen to handle the screen style
   screen: {
@@ -191,3 +192,5 @@ export const styles = StyleSheet.create({
     lineHeight: 21,
   },
 });
+
+export default styles;

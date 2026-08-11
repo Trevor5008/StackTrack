@@ -93,7 +93,7 @@ Helpers: `assertBudget`, `assertStake`, `computeRemainingBudget` in
 ### Risk of Ruin (basic strategy)
 
 - RoR is **unknown** until table rules and betting unit are set
-- Estimate uses remaining budget ÷ unit and approximate house edge (BS only; no counting)
+- Estimate uses session bankroll (`remaining + open stakes`) ÷ unit and approximate house edge (BS only; no counting)
 - If estimated RoR **>** session risk tolerance → **Not viable** visual (soft warn on Play)
 - Helpers: `estimateBasicStrategyRoR`, `isTableViable` in `src/lib/riskOfRuin.ts`
 
