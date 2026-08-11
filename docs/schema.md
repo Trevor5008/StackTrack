@@ -81,21 +81,12 @@ Elapsed time and `hoursPlayed` come from **per-table timers** on
 `active_tables` / `session_tables`. Session-level timer columns remain for
 schema compatibility only.
 
-Schema v3 migration creates `casinos` from distinct non-empty session /
-active `location` strings, sets `casino_id`, and uses `"Unknown casino"` for
-empty/orphan rows.
-
-Schema v4 adds table timer columns and `session_tables.elapsed_ms`. If a live
-session already had wall-clock time and tables, that elapsed is moved onto the
-**first** active table as paused `accumulated_ms` so in-progress sessions are
-not zeroed.
-
-Schema v5 adds `remaining_budget` on `active_sessions` and `stake` on
-`active_tables`. In-progress rows with null `buy_in` get
-`buy_in = starting_bankroll` and `remaining_budget = buy_in`.
-
-Schema v6 adds `risk_tolerance` on `active_sessions` and `betting_unit` on
-`active_tables` / `session_tables` (RoR unknown until rules + unit are set).
+Schema **v6** is the baseline `CREATE` in `src/storage/db.ts` (casinos,
+`casino_id`, table timers, budget/stake, RoR columns). Older local files are
+not upgraded in place — wipe `stacktrack.db` (uninstall / clear app data) and
+relaunch. Casinos are created only when the user adds one, loads demo data, or
+AsyncStorage import calls `ensureCasino` (empty locations become
+`"Unknown casino"` at import time, not on every launch).
 
 ### active_tables
 

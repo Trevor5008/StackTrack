@@ -1,13 +1,11 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import * as SQLite from 'expo-sqlite';
 
-import { casinoNameKey } from '@/src/lib/casinoName';
-import { computeElapsedMs, createId } from '@/src/lib/liveTimer';
-
 export const DATABASE_NAME = 'stacktrack.db';
 export const SCHEMA_VERSION = 6;
 
-const SCHEMA_V1_SQL = `
+/** Current schema (v6). Older local files are not upgraded — wipe and recreate. */
+const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY NOT NULL,
   value TEXT NOT NULL
@@ -17,10 +15,18 @@ CREATE TABLE IF NOT EXISTS settings (
   starting_bankroll REAL NOT NULL,
   currency TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS casinos (
+  id TEXT PRIMARY KEY NOT NULL,
+  name TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_casinos_name ON casinos(name COLLATE NOCASE);
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY NOT NULL,
   date TEXT NOT NULL,
   location TEXT NOT NULL,
+  casino_id TEXT,
   starting_bankroll REAL NOT NULL,
   buy_in REAL NOT NULL,
   cash_out REAL NOT NULL,
@@ -31,14 +37,14 @@ CREATE TABLE IF NOT EXISTS sessions (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date DESC, created_at DESC);
-`;
-
-const SCHEMA_V2_SQL = `
 CREATE TABLE IF NOT EXISTS active_sessions (
   id TEXT PRIMARY KEY NOT NULL,
+  casino_id TEXT,
   location TEXT NOT NULL,
   starting_bankroll REAL NOT NULL,
   buy_in REAL,
+  remaining_budget REAL,
+  risk_tolerance REAL NOT NULL DEFAULT 5,
   segment_started_at TEXT NOT NULL,
   accumulated_ms INTEGER NOT NULL,
   is_paused INTEGER NOT NULL,
@@ -52,8 +58,14 @@ CREATE TABLE IF NOT EXISTS active_tables (
   name TEXT NOT NULL,
   sort_order INTEGER NOT NULL,
   net_result REAL NOT NULL,
+  stake REAL NOT NULL DEFAULT 0,
+  betting_unit REAL,
   rank_placeholder INTEGER,
   rules_json TEXT,
+  accumulated_ms INTEGER NOT NULL DEFAULT 0,
+  segment_started_at TEXT,
+  is_paused INTEGER NOT NULL DEFAULT 1,
+  paused_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (active_session_id) REFERENCES active_sessions(id) ON DELETE CASCADE
@@ -66,6 +78,8 @@ CREATE TABLE IF NOT EXISTS session_tables (
   net_result REAL NOT NULL,
   rank_placeholder INTEGER,
   rules_json TEXT,
+  elapsed_ms INTEGER NOT NULL DEFAULT 0,
+  betting_unit REAL,
   created_at TEXT NOT NULL,
   FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
@@ -75,292 +89,33 @@ CREATE INDEX IF NOT EXISTS idx_session_tables_session
   ON session_tables(session_id, sort_order);
 `;
 
-const SCHEMA_V3_SQL = `
-CREATE TABLE IF NOT EXISTS casinos (
-  id TEXT PRIMARY KEY NOT NULL,
-  name TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_casinos_name ON casinos(name COLLATE NOCASE);
-`;
-
 let dbPromise: Promise<SQLiteDatabase> | null = null;
-let schemaReady = false;
 
-async function columnExists(
-  db: SQLiteDatabase,
-  table: string,
-  column: string,
-): Promise<boolean> {
-  const rows = await db.getAllAsync<{ name: string }>(
-    `PRAGMA table_info(${table})`,
-  );
-  return rows.some((row) => row.name === column);
-}
-
-async function migrateToV3(db: SQLiteDatabase): Promise<void> {
-  await db.execAsync(SCHEMA_V3_SQL);
-
-  if (!(await columnExists(db, 'sessions', 'casino_id'))) {
-    await db.execAsync('ALTER TABLE sessions ADD COLUMN casino_id TEXT');
+async function openAndInit(): Promise<SQLiteDatabase> {
+  const db = await SQLite.openDatabaseAsync(DATABASE_NAME);
+  try {
+    await db.execAsync('PRAGMA journal_mode = WAL;');
+  } catch {
+    // WAL is unsupported on some web/sqlite builds.
   }
-  if (!(await columnExists(db, 'active_sessions', 'casino_id'))) {
-    await db.execAsync(
-      'ALTER TABLE active_sessions ADD COLUMN casino_id TEXT',
-    );
+  try {
+    await db.execAsync('PRAGMA foreign_keys = ON;');
+  } catch {
+    // ignore
   }
-
-  const sessionLocations = await db.getAllAsync<{ location: string }>(
-    `SELECT DISTINCT location FROM sessions
-     WHERE location IS NOT NULL AND TRIM(location) != ''`,
-  );
-  const activeLocations = await db.getAllAsync<{ location: string }>(
-    `SELECT DISTINCT location FROM active_sessions
-     WHERE location IS NOT NULL AND TRIM(location) != ''`,
-  );
-
-  const names = new Map<string, string>(); // lower -> display
-  for (const row of [...sessionLocations, ...activeLocations]) {
-    const trimmed = row.location.trim();
-    if (!trimmed) continue;
-    const key = casinoNameKey(trimmed);
-    if (!names.has(key)) names.set(key, trimmed);
+  await db.execAsync(SCHEMA_SQL);
+  const version = await getMeta(db, 'schema_version');
+  if (version !== String(SCHEMA_VERSION)) {
+    await setMeta(db, 'schema_version', String(SCHEMA_VERSION));
   }
-
-  const existing = await db.getAllAsync<{ id: string; name: string }>(
-    'SELECT id, name FROM casinos',
-  );
-  const byLower = new Map(
-    existing.map((row) => [casinoNameKey(row.name), row.id]),
-  );
-
-  const now = new Date().toISOString();
-  for (const [key, display] of names) {
-    if (byLower.has(key)) continue;
-    const id = createId();
-    await db.runAsync(
-      `INSERT INTO casinos (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)`,
-      [id, display, now, now],
-    );
-    byLower.set(key, id);
-  }
-
-  let unknownId = byLower.get('unknown casino');
-  if (!unknownId) {
-    unknownId = createId();
-    await db.runAsync(
-      `INSERT INTO casinos (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)`,
-      [unknownId, 'Unknown casino', now, now],
-    );
-    byLower.set('unknown casino', unknownId);
-  }
-
-  const sessionsNeedingId = await db.getAllAsync<{
-    id: string;
-    location: string;
-    casino_id: string | null;
-  }>(`SELECT id, location, casino_id FROM sessions`);
-
-  for (const row of sessionsNeedingId) {
-    if (row.casino_id) continue;
-    const key = casinoNameKey(row.location ?? '');
-    const casinoId = byLower.get(key) ?? unknownId;
-    await db.runAsync(`UPDATE sessions SET casino_id = ? WHERE id = ?`, [
-      casinoId,
-      row.id,
-    ]);
-  }
-
-  const activeNeedingId = await db.getAllAsync<{
-    id: string;
-    location: string;
-    casino_id: string | null;
-  }>(`SELECT id, location, casino_id FROM active_sessions`);
-
-  for (const row of activeNeedingId) {
-    if (row.casino_id) continue;
-    const key = casinoNameKey(row.location ?? '');
-    const casinoId = byLower.get(key) ?? unknownId;
-    await db.runAsync(
-      `UPDATE active_sessions SET casino_id = ? WHERE id = ?`,
-      [casinoId, row.id],
-    );
-  }
-}
-
-async function migrateToV4(db: SQLiteDatabase): Promise<void> {
-  if (!(await columnExists(db, 'active_tables', 'accumulated_ms'))) {
-    await db.execAsync(
-      'ALTER TABLE active_tables ADD COLUMN accumulated_ms INTEGER NOT NULL DEFAULT 0',
-    );
-  }
-  if (!(await columnExists(db, 'active_tables', 'segment_started_at'))) {
-    await db.execAsync(
-      'ALTER TABLE active_tables ADD COLUMN segment_started_at TEXT',
-    );
-  }
-  if (!(await columnExists(db, 'active_tables', 'is_paused'))) {
-    await db.execAsync(
-      'ALTER TABLE active_tables ADD COLUMN is_paused INTEGER NOT NULL DEFAULT 1',
-    );
-  }
-  if (!(await columnExists(db, 'active_tables', 'paused_at'))) {
-    await db.execAsync('ALTER TABLE active_tables ADD COLUMN paused_at TEXT');
-  }
-  if (!(await columnExists(db, 'session_tables', 'elapsed_ms'))) {
-    await db.execAsync(
-      'ALTER TABLE session_tables ADD COLUMN elapsed_ms INTEGER NOT NULL DEFAULT 0',
-    );
-  }
-
-  // Move in-progress session wall-clock onto the first table (paused).
-  const active = await db.getFirstAsync<{
-    id: string;
-    accumulated_ms: number;
-    is_paused: number;
-    segment_started_at: string;
-  }>(
-    `SELECT id, accumulated_ms, is_paused, segment_started_at
-     FROM active_sessions LIMIT 1`,
-  );
-  if (!active) return;
-
-  const elapsed = computeElapsedMs({
-    accumulatedMs: active.accumulated_ms ?? 0,
-    isPaused: active.is_paused === 1,
-    segmentStartedAt: active.segment_started_at,
-  });
-  if (elapsed <= 0) return;
-
-  const firstTable = await db.getFirstAsync<{
-    id: string;
-    accumulated_ms: number;
-  }>(
-    `SELECT id, accumulated_ms FROM active_tables
-     WHERE active_session_id = ?
-     ORDER BY sort_order ASC, created_at ASC
-     LIMIT 1`,
-    [active.id],
-  );
-  if (!firstTable) return;
-  if ((firstTable.accumulated_ms ?? 0) > 0) return;
-
-  const now = new Date().toISOString();
-  await db.runAsync(
-    `UPDATE active_tables
-     SET accumulated_ms = ?,
-         is_paused = 1,
-         segment_started_at = NULL,
-         paused_at = ?,
-         updated_at = ?
-     WHERE id = ?`,
-    [elapsed, now, now, firstTable.id],
-  );
-  await db.runAsync(
-    `UPDATE active_sessions
-     SET accumulated_ms = 0,
-         is_paused = 1,
-         paused_at = ?,
-         updated_at = ?
-     WHERE id = ?`,
-    [now, now, active.id],
-  );
-}
-
-async function migrateToV5(db: SQLiteDatabase): Promise<void> {
-  if (!(await columnExists(db, 'active_sessions', 'remaining_budget'))) {
-    await db.execAsync(
-      'ALTER TABLE active_sessions ADD COLUMN remaining_budget REAL',
-    );
-  }
-  if (!(await columnExists(db, 'active_tables', 'stake'))) {
-    await db.execAsync(
-      'ALTER TABLE active_tables ADD COLUMN stake REAL NOT NULL DEFAULT 0',
-    );
-  }
-
-  const active = await db.getFirstAsync<{
-    id: string;
-    buy_in: number | null;
-    starting_bankroll: number;
-    remaining_budget: number | null;
-  }>(
-    `SELECT id, buy_in, starting_bankroll, remaining_budget
-     FROM active_sessions LIMIT 1`,
-  );
-  if (!active) return;
-
-  const budget =
-    active.buy_in != null && Number.isFinite(active.buy_in) && active.buy_in > 0
-      ? active.buy_in
-      : active.starting_bankroll;
-  const remaining =
-    active.remaining_budget != null && Number.isFinite(active.remaining_budget)
-      ? active.remaining_budget
-      : budget;
-
-  await db.runAsync(
-    `UPDATE active_sessions
-     SET buy_in = ?, remaining_budget = ?
-     WHERE id = ?`,
-    [budget, remaining, active.id],
-  );
-}
-
-async function migrateToV6(db: SQLiteDatabase): Promise<void> {
-  if (!(await columnExists(db, 'active_sessions', 'risk_tolerance'))) {
-    await db.execAsync(
-      'ALTER TABLE active_sessions ADD COLUMN risk_tolerance REAL NOT NULL DEFAULT 5',
-    );
-  }
-  if (!(await columnExists(db, 'active_tables', 'betting_unit'))) {
-    await db.execAsync(
-      'ALTER TABLE active_tables ADD COLUMN betting_unit REAL',
-    );
-  }
-  if (!(await columnExists(db, 'session_tables', 'betting_unit'))) {
-    await db.execAsync(
-      'ALTER TABLE session_tables ADD COLUMN betting_unit REAL',
-    );
-  }
-
-  await db.runAsync(
-    `UPDATE active_sessions
-     SET risk_tolerance = 5
-     WHERE risk_tolerance IS NULL OR risk_tolerance <= 0`,
-  );
+  return db;
 }
 
 export async function getDb(): Promise<SQLiteDatabase> {
   if (!dbPromise) {
-    dbPromise = SQLite.openDatabaseAsync(DATABASE_NAME);
+    dbPromise = openAndInit();
   }
-  const db = await dbPromise;
-  if (!schemaReady) {
-    try {
-      await db.execAsync('PRAGMA journal_mode = WAL;');
-    } catch {
-      // WAL is unsupported on some web/sqlite builds.
-    }
-    try {
-      await db.execAsync('PRAGMA foreign_keys = ON;');
-    } catch {
-      // ignore
-    }
-    await db.execAsync(SCHEMA_V1_SQL);
-    await db.execAsync(SCHEMA_V2_SQL);
-    await migrateToV3(db);
-    await migrateToV4(db);
-    await migrateToV5(db);
-    await migrateToV6(db);
-    const version = await getMeta(db, 'schema_version');
-    if (version !== String(SCHEMA_VERSION)) {
-      await setMeta(db, 'schema_version', String(SCHEMA_VERSION));
-    }
-    schemaReady = true;
-  }
-  return db;
+  return dbPromise;
 }
 
 export async function getMeta(
@@ -388,5 +143,4 @@ export async function setMeta(
 
 export function resetDbSingletonForTests(): void {
   dbPromise = null;
-  schemaReady = false;
 }

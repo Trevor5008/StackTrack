@@ -16,6 +16,7 @@ App version is kept in sync in:
 
 - Extract shared UI (`FormSheet`, `ActionButton`, `SessionTableCard`, `ActiveSessionBanner`, `SwipeableDeleteRow`) and `commonStyles` to shrink live/casino/session/dashboard screens without behavior changes
 - Colocate StyleSheets in `*.styles.ts` next to components and screens
+- Squash stepwise SQLite v1–v6 migrators into a single v6 schema script (wipe local `stacktrack.db` if upgrading from a pre-v6 file)
 
 ## [1.1.0] - 2026-08-09
 
