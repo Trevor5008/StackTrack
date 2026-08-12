@@ -259,7 +259,7 @@ Computed in `src/lib/stats.ts` from settings + sessions:
 | `currentBankroll(starting, sessions)` | `starting + lifetimeProfitLoss` |
 | `totalSessions(sessions)` | `sessions.length` |
 | `totalHours(sessions)` | `sum(hoursPlayed)` |
-| `hourlyRate(sessions)` | `lifetimeProfitLoss / totalHours` (0 if no hours) |
+| `hourlyRate(sessions)` | `lifetimeProfitLoss / ceil(totalHours)` when hours > 0; else `0`. Ceiling avoids inflated $/hr on short (e.g. test) sessions; Hours cards still use exact `totalHours`. |
 | `winLossRecord(sessions)` | wins / losses / pushes |
 | `biggestWin(sessions)` | `max(netResult)` (0 if empty) |
 | `biggestLoss(sessions)` | `min(netResult)` (0 if empty) |

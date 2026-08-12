@@ -177,7 +177,9 @@ flowchart LR
 ```
 
 Dashboard lists casinos with scoped aggregates. Casino screen filters sessions
-by `casinoId` then reuses the same stats helpers.
+by `casinoId` then reuses the same stats helpers. Hourly rate on the casino
+screen uses that filtered list and `ceil(totalHours)` so brief sits do not
+show extreme $/hr.
 
 ## Layered architecture
 
