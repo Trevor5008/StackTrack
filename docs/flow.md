@@ -76,6 +76,7 @@ flowchart TD
   Detail --> TableOverview[Tables with elapsed net RoR]
   Tables -->|Edit rules| RulesModal[TableRulesForm]
   RulesModal --> Tables
+  Tables -->|Delete when paused| Tables
 ```
 
 ### Bankroll → budget → stake
@@ -83,6 +84,7 @@ flowchart TD
 - **Start session**: choose session budget (`0 < budget ≤ currentBankroll`) and **risk tolerance** preset
 - **Play**: choose betting unit (`≥ table min`) and stake (`≤ remaining budget`); only one table may run
 - **Pause**: enter ending chips; `net = ending − stake`; chips return to remaining
+- **Delete table**: allowed only when the table is paused with no stake out; playing tables show an alert to pause first
 - **End**: confirmation only — persist `buyIn = budget`, `cashOut = remaining`,
   `netResult = cashOut − buyIn` (updates global bankroll via existing stats)
 - Block end while any table still has stake out / is playing

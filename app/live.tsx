@@ -27,12 +27,13 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Platform,
   Pressable,
   ScrollView,
   Text,
   View,
 } from 'react-native';
-
 import { styles } from './live.styles';
 
 type MoneyModal =
@@ -55,6 +56,7 @@ export default function LiveSessionScreen() {
     pauseTable,
     addTable,
     updateTable,
+    deleteTable,
     endSession,
     discardSession,
   } = useLiveSession();
@@ -185,6 +187,46 @@ export default function LiveSessionScreen() {
       async () => {
         await discardSession();
         router.replace('/');
+      },
+    );
+  };
+
+  const onDeleteTable = (tableId: string) => {
+    const table = tables.find((item) => item.id === tableId);
+    if (!table) return;
+
+    if (!table.isPaused || table.stake > 0) {
+      const title = 'Pause before deleting';
+      const message = 'Pause this table before deleting it.';
+      if (Platform.OS === 'web') {
+        if (typeof globalThis !== 'undefined' && 'alert' in globalThis) {
+          (globalThis as { alert: (text: string) => void }).alert(
+            `${title}\n\n${message}`,
+          );
+        }
+        return;
+      }
+      Alert.alert(title, message);
+      return;
+    }
+
+    confirmAction(
+      {
+        title: 'Delete table?',
+        message: 'This removes the table and its P/L from the live session.',
+        confirmLabel: 'Delete',
+        destructive: true,
+      },
+      async () => {
+        try {
+          await deleteTable(tableId);
+          if (rulesTableId === tableId) setRulesTableId(null);
+          setTableError(null);
+        } catch (err) {
+          setTableError(
+            err instanceof Error ? err.message : 'Could not delete the table.',
+          );
+        }
       },
     );
   };
@@ -363,6 +405,7 @@ export default function LiveSessionScreen() {
                 onPause={() => openResultsModal(table.id)}
                 onChangeName={(name) => void updateTable(table.id, { name })}
                 onOpenRules={() => setRulesTableId(table.id)}
+                onDelete={() => onDeleteTable(table.id)}
               />
             ))}
           </View>

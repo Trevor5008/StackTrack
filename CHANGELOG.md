@@ -12,8 +12,13 @@ App version is kept in sync in:
 
 ## [Unreleased]
 
+### Added
+
+- Delete paused live tables from the expanded table card (alert if still playing)
+
 ### Changed
 
+- Expand-card rules control labeled Edit / Set table rules with summary as secondary text
 - Extract shared UI (`FormSheet`, `ActionButton`, `SessionTableCard`, `ActiveSessionBanner`, `SwipeableDeleteRow`) and `commonStyles` to shrink live/casino/session/dashboard screens without behavior changes
 - Colocate StyleSheets in `*.styles.ts` next to components and screens
 - Squash stepwise SQLite v1–v6 migrators into a single v6 schema script (wipe local `stacktrack.db` if upgrading from a pre-v6 file)

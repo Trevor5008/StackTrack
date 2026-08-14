@@ -32,6 +32,7 @@ type LiveSessionTableCardProps = {
   onPause: () => void;
   onChangeName: (name: string) => void;
   onOpenRules: () => void;
+  onDelete: () => void;
 };
 
 type SummarySessionTableCardProps = {
@@ -123,7 +124,13 @@ function SummaryTableCard({
   );
 }
 
-// Live table card component
+// Live table card component w/ crud
+// Create and delete actions are only available for paused tables
+// Create action is to set table rules
+// Delete action is to delete the table
+// Edit action is to edit the table rules
+// Play action is to play the table
+// Pause action is to pause the table
 function LiveTableCard({
   table,
   currency,
@@ -134,6 +141,7 @@ function LiveTableCard({
   onPause,
   onChangeName,
   onOpenRules,
+  onDelete,
 }: LiveSessionTableCardProps) {
   const [expanded, setExpanded] = useState(false);
   const rules = parseTableRules(table.rulesJson);
@@ -248,6 +256,7 @@ function LiveTableCard({
           <Text style={styles.readOnly}>
             Table P/L: {formatCurrency(table.netResult, currency, true)}
           </Text>
+          {/* Edit table rules button */}
           <Pressable
             onPress={onOpenRules}
             style={({ pressed }) => [
@@ -255,9 +264,25 @@ function LiveTableCard({
               pressed && styles.pressed,
             ]}
           >
-            <Text style={styles.rulesButtonText}>
-              {rules ? formatTableRulesSummary(rules) : 'Set table rules'}
+            <Text style={styles.rulesButtonTitle}>
+              {rules ? 'Edit table rules' : 'Set table rules'}
             </Text>
+            {rules ? (
+              <Text style={styles.rulesButtonSubtitle}>
+                {formatTableRulesSummary(rules)}
+              </Text>
+            ) : null}
+          </Pressable>
+          {/* Delete table button (only paused tables can be deleted)*/}
+          <Pressable
+            onPress={onDelete}
+            style={({ pressed }) => [
+              styles.deleteButton,
+              pressed && styles.pressed,
+            ]}
+            disabled={!table.isPaused}
+          >
+            <Text style={styles.deleteButtonText}>Delete table</Text>
           </Pressable>
         </View>
       ) : null}

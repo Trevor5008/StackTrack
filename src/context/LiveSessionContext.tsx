@@ -10,6 +10,7 @@ import {
 
 import { useSessions } from '@/src/context/SessionContext';
 import {
+  assertCanDeleteTable,
   assertCanPlayTable,
   computeElapsedMs,
   findRunningTable,
@@ -32,6 +33,7 @@ import {
   addActiveTable,
   clearActiveSession,
   copyTablesToSession,
+  deleteActiveTable,
   loadActiveSession,
   loadActiveTables,
   startActiveSession,
@@ -67,6 +69,7 @@ type LiveSessionContextValue = {
     id: string,
     patch: Partial<Pick<ActiveTable, 'name' | 'rulesJson'>>,
   ) => Promise<void>;
+  deleteTable: (id: string) => Promise<void>;
   endSession: () => Promise<Session>;
   discardSession: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -291,6 +294,36 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
     [tables],
   );
 
+  const deleteTable = useCallback(
+    async (id: string) => {
+      if (!activeSession) {
+        throw new Error('No live session in progress.');
+      }
+      const current = tables.find((table) => table.id === id);
+      if (!current) return;
+      assertCanDeleteTable(current);
+
+      await deleteActiveTable(id);
+      const nextTables = tables.filter((table) => table.id !== id);
+      const remainingBudget = computeRemainingBudget(
+        activeSession.buyIn,
+        nextTables,
+      );
+      const nowIso = new Date().toISOString();
+      const nextSession: ActiveSession = {
+        ...activeSession,
+        remainingBudget,
+        updatedAt: nowIso,
+      };
+      await updateActiveSession(nextSession);
+      setTables(nextTables);
+      setActiveSession(nextSession);
+      setElapsedMs(sumTableElapsedMs(nextTables));
+      setError(null);
+    },
+    [activeSession, tables],
+  );
+
   const discardSession = useCallback(async () => {
     await clearActiveSession();
     setActiveSession(null);
@@ -369,6 +402,7 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
       pauseTable,
       addTable,
       updateTable,
+      deleteTable,
       endSession,
       discardSession,
       refresh,
@@ -387,6 +421,7 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
       pauseTable,
       addTable,
       updateTable,
+      deleteTable,
       endSession,
       discardSession,
       refresh,

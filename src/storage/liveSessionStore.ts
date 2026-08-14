@@ -330,6 +330,11 @@ export async function updateActiveTable(table: ActiveTable): Promise<void> {
   );
 }
 
+export async function deleteActiveTable(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(`DELETE FROM active_tables WHERE id = ?`, [id]);
+}
+
 export async function clearActiveSession(): Promise<void> {
   const db = await getDb();
   await db.withTransactionAsync(async () => {
