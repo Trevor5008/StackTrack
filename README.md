@@ -76,7 +76,7 @@ stacktrack/
 │   │   ├── ActiveSessionBanner.tsx
 │   │   ├── BankrollTrend.tsx
 │   │   ├── CasinoCard.tsx
-│   │   ├── FormSheet.tsx         # Bottom-sheet modal chrome
+│   │   ├── FormSheet.tsx         # Bottom-sheet modal + KAV + scrollable body
 │   │   ├── RankBadge.tsx
 │   │   ├── SessionForm.tsx
 │   │   ├── SessionListItem.tsx
