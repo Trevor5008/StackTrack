@@ -64,6 +64,18 @@ export function assertCanPlayTable(
   }
 }
 
+export type DeletableTableLike = {
+  isPaused: boolean;
+  stake: number;
+};
+
+/** Throws if the table is still playing or has stake out. */
+export function assertCanDeleteTable(table: DeletableTableLike): void {
+  if (!table.isPaused || table.stake > 0) {
+    throw new Error('Pause this table before deleting it.');
+  }
+}
+
 // Convert elapsed ms to hours played
 export function msToHoursPlayed(elapsedMs: number): number {
   const hours = elapsedMs / 3_600_000;

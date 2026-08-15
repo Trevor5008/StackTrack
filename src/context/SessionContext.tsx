@@ -28,6 +28,21 @@ import { assertSessionInput } from '@/src/storage/validators';
 import { Casino } from '@/src/types/casino';
 import { AppSettings, Session, SessionInput } from '@/src/types/session';
 
+// CRUD operations for the session context
+// - Create a new session
+// - Update a session
+// - Delete a session
+// - Add a new casino
+// - Rename a casino
+// - Delete a casino
+// - Refresh the casinos
+// - Update the settings
+// - Seed demo data
+// - Clear the sessions
+// - Clear all data
+
+
+// Context value for the session context
 type SessionContextValue = {
   sessions: Session[];
   casinos: Casino[];
@@ -47,8 +62,10 @@ type SessionContextValue = {
   clearAllData: () => Promise<void>;
 };
 
+// Context for the SessionProvider component
 const SessionContext = createContext<SessionContextValue | null>(null);
 
+// Sort sessions by date in descending order
 function newestFirst(sessions: Session[]): Session[] {
   return [...sessions].sort(
     (a, b) =>
@@ -57,10 +74,12 @@ function newestFirst(sessions: Session[]): Session[] {
   );
 }
 
+// Create a unique ID for a session
 function createId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+// Combine warnings from the session and settings
 function combineWarnings(
   sessionWarning: string | null,
   settingsWarning: string | null,
@@ -81,6 +100,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     setCasinos(loaded);
   }, []);
 
+  // Load the sessions, settings, and casinos from the database
   useEffect(() => {
     Promise.all([loadSessions(), loadSettings(), loadCasinos()])
       .then(([storedSessions, storedSettings, loadedCasinos]) => {
@@ -95,6 +115,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       .finally(() => setIsLoading(false));
   }, []);
 
+  // Persist the sessions to the database
   const persistSessions = useCallback(
     async (next: Session[], previous: Session[]) => {
       const sorted = newestFirst(next);
@@ -111,6 +132,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     [],
   );
 
+  // Add a new session to the database
   const addSession = useCallback(
     async (input: SessionInput) => {
       const validated = assertSessionInput(input);
@@ -128,6 +150,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     [persistSessions, sessions],
   );
 
+  // Update a session in the database
   const updateSession = useCallback(
     async (id: string, input: SessionInput) => {
       const validated = assertSessionInput(input);
@@ -146,6 +169,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     [persistSessions, sessions],
   );
 
+  // Delete a session from the database
   const deleteSession = useCallback(
     async (id: string) => {
       await persistSessions(
@@ -156,6 +180,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     [persistSessions, sessions],
   );
 
+  // Add a new casino to the database
   const addCasino = useCallback(
     async (name: string) => {
       const casino = await addCasinoRecord(name);
@@ -171,6 +196,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     [],
   );
 
+  // Rename a casino in the database
   const renameCasino = useCallback(async (id: string, name: string) => {
     const casino = await renameCasinoRecord(id, name);
     setCasinos((current) =>
@@ -190,6 +216,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     return casino;
   }, []);
 
+  // Delete a casino from the database
   const deleteCasino = useCallback(async (id: string) => {
     await deleteCasinoRecord(id);
     setCasinos((current) => current.filter((item) => item.id !== id));
@@ -198,6 +225,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     );
   }, []);
 
+  // Update the settings in the database
   const updateSettings = useCallback(
     async (next: AppSettings) => {
       const previous = settings;

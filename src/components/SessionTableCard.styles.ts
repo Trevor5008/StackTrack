@@ -110,14 +110,35 @@ export const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,
+    gap: 2,
     justifyContent: 'center',
     marginTop: spacing.xs,
     minHeight: 44,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
   },
-  rulesButtonText: {
+  rulesButtonTitle: {
+    color: colors.text,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  rulesButtonSubtitle: {
     color: colors.textMuted,
+    fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  deleteButton: {
+    alignItems: 'center',
+    borderColor: colors.negative,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  deleteButtonText: {
+    color: colors.negative,
+    fontWeight: '700',
   },
   pressed: {
     opacity: 0.8,

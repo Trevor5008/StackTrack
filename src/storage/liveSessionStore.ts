@@ -68,9 +68,9 @@ function activeSessionFromRow(row: ActiveSessionRow): ActiveSession {
     casinoId: row.casino_id ?? '',
     location: row.location,
     startingBankroll: row.starting_bankroll,
-    buyIn: budget,
+    buyIn: budget, // budget is the buy in for the session
     remainingBudget: row.remaining_budget ?? budget,
-    riskTolerance: row.risk_tolerance ?? DEFAULT_RISK_TOLERANCE,
+    riskTolerance: row.risk_tolerance ?? DEFAULT_RISK_TOLERANCE, // risk tolerance is the risk tolerance for the session
     segmentStartedAt: row.segment_started_at,
     accumulatedMs: row.accumulated_ms,
     isPaused: row.is_paused === 1,
@@ -115,6 +115,7 @@ function sessionTableFromRow(row: SessionTableRow): SessionTable {
   };
 }
 
+// Load the active session from the database
 export async function loadActiveSession(): Promise<ActiveSession | null> {
   const db = await getDb();
   const row = await db.getFirstAsync<ActiveSessionRow>(
@@ -127,6 +128,7 @@ export async function loadActiveSession(): Promise<ActiveSession | null> {
   return row ? activeSessionFromRow(row) : null;
 }
 
+// Load the active tables from the database
 export async function loadActiveTables(
   activeSessionId: string,
 ): Promise<ActiveTable[]> {
@@ -326,6 +328,11 @@ export async function updateActiveTable(table: ActiveTable): Promise<void> {
       table.id,
     ],
   );
+}
+
+export async function deleteActiveTable(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(`DELETE FROM active_tables WHERE id = ?`, [id]);
 }
 
 export async function clearActiveSession(): Promise<void> {

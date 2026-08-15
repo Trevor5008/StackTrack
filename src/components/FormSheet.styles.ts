@@ -3,11 +3,13 @@ import { StyleSheet } from 'react-native';
 import { colors, radius, spacing } from '@/src/theme';
 
 export const styles = StyleSheet.create({
+  // Backdrop styles
   backdrop: {
     backgroundColor: 'rgba(0,0,0,0.55)',
     flex: 1,
     justifyContent: 'flex-end',
   },
+  // Backdrop dismiss styles
   backdropDismiss: {
     flex: 1,
   },

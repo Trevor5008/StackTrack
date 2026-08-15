@@ -2,6 +2,7 @@ import { StyleSheet } from 'react-native';
 
 import { colors, radius, spacing } from '@/src/theme';
 
+// Styles for the index screen
 export const styles = StyleSheet.create({
   eyebrowGap: {
     marginBottom: spacing.xs,
@@ -37,3 +38,4 @@ export const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+

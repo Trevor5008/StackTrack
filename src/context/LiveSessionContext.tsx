@@ -10,6 +10,7 @@ import {
 
 import { useSessions } from '@/src/context/SessionContext';
 import {
+  assertCanDeleteTable,
   assertCanPlayTable,
   computeElapsedMs,
   findRunningTable,
@@ -32,6 +33,7 @@ import {
   addActiveTable,
   clearActiveSession,
   copyTablesToSession,
+  deleteActiveTable,
   loadActiveSession,
   loadActiveTables,
   startActiveSession,
@@ -67,6 +69,7 @@ type LiveSessionContextValue = {
     id: string,
     patch: Partial<Pick<ActiveTable, 'name' | 'rulesJson'>>,
   ) => Promise<void>;
+  deleteTable: (id: string) => Promise<void>;
   endSession: () => Promise<Session>;
   discardSession: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -129,12 +132,15 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
       return;
     }
 
+    // time duration of the session is the sum of the elapsed time of all tables
     const tick = () => setElapsedMs(sumTableElapsedMs(tables));
     tick();
     const id = setInterval(tick, 1000);
+    // clear the interval when the component unmounts
     return () => clearInterval(id);
   }, [tables]);
 
+  // start a new session
   const startSession = useCallback(
     async (input: StartLiveSessionInput) => {
       const startingBankroll =
@@ -156,13 +162,17 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
     [settings.startingBankroll],
   );
 
+  // Pause the table timer and update the session budget based on results
   const pauseTable = useCallback(
     async (id: string, endingChips: number) => {
       if (!activeSession) {
         throw new Error('No live session in progress.');
       }
+      // validate the ending chips
       assertEndingChips(endingChips);
+      // find the table
       const current = tables.find((table) => table.id === id);
+      // if the table is not found or is already paused, return
       if (!current || current.isPaused) return;
       if (current.stake <= 0) {
         throw new Error('This table has no stake to settle.');
@@ -200,12 +210,15 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
     [activeSession, tables],
   );
 
+  // Play a table and update the session budget based on results
   const playTable = useCallback(
     async (id: string, stake: number, bettingUnit: number) => {
       if (!activeSession) {
         throw new Error('No live session in progress.');
       }
+      // validate the table
       assertCanPlayTable(tables, id);
+      // validate the stake
       const available = computeRemainingBudget(activeSession.buyIn, tables);
       assertStake(stake, available);
       const current = tables.find((table) => table.id === id);
@@ -279,6 +292,36 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
       setTables((prev) => prev.map((table) => (table.id === id ? next : table)));
     },
     [tables],
+  );
+
+  const deleteTable = useCallback(
+    async (id: string) => {
+      if (!activeSession) {
+        throw new Error('No live session in progress.');
+      }
+      const current = tables.find((table) => table.id === id);
+      if (!current) return;
+      assertCanDeleteTable(current);
+
+      await deleteActiveTable(id);
+      const nextTables = tables.filter((table) => table.id !== id);
+      const remainingBudget = computeRemainingBudget(
+        activeSession.buyIn,
+        nextTables,
+      );
+      const nowIso = new Date().toISOString();
+      const nextSession: ActiveSession = {
+        ...activeSession,
+        remainingBudget,
+        updatedAt: nowIso,
+      };
+      await updateActiveSession(nextSession);
+      setTables(nextTables);
+      setActiveSession(nextSession);
+      setElapsedMs(sumTableElapsedMs(nextTables));
+      setError(null);
+    },
+    [activeSession, tables],
   );
 
   const discardSession = useCallback(async () => {
@@ -359,6 +402,7 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
       pauseTable,
       addTable,
       updateTable,
+      deleteTable,
       endSession,
       discardSession,
       refresh,
@@ -377,6 +421,7 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
       pauseTable,
       addTable,
       updateTable,
+      deleteTable,
       endSession,
       discardSession,
       refresh,
@@ -390,6 +435,7 @@ export function LiveSessionProvider({ children }: PropsWithChildren) {
   );
 }
 
+// Custom hook to access the live session context
 export function useLiveSession(): LiveSessionContextValue {
   const context = useContext(LiveSessionContext);
   if (!context) {

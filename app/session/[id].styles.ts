@@ -2,12 +2,15 @@ import { StyleSheet } from 'react-native';
 
 import { colors, radius, spacing } from '@/src/theme';
 
+// Styles for the session screen
 export const styles = StyleSheet.create({
+  // not found title to handle the not found title style
   notFoundTitle: {
     color: colors.text,
     fontSize: 20,
     fontWeight: '700',
   },
+  // edit header to handle the edit header style
   editHeader: {
     alignItems: 'center',
     flexDirection: 'row',

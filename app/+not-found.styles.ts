@@ -2,6 +2,7 @@ import { StyleSheet } from 'react-native';
 
 import { colors, spacing } from '@/src/theme';
 
+// Styles for the not found screen
 export const styles = StyleSheet.create({
   // container to handle the container style
   container: {

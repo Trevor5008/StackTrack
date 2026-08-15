@@ -8,6 +8,7 @@ import { useSessions } from '@/src/context/SessionContext';
 import { confirmAction } from '@/src/lib/confirm';
 import { formatCurrency } from '@/src/lib/format';
 import { formatElapsed, msToHoursPlayed } from '@/src/lib/liveTimer';
+import { computeSessionBankroll } from '@/src/lib/sessionBudget';
 import {
   estimateBasicStrategyRoR,
   formatRoR,
@@ -26,12 +27,13 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Platform,
   Pressable,
   ScrollView,
   Text,
   View,
 } from 'react-native';
-
 import { styles } from './live.styles';
 
 type MoneyModal =
@@ -54,6 +56,7 @@ export default function LiveSessionScreen() {
     pauseTable,
     addTable,
     updateTable,
+    deleteTable,
     endSession,
     discardSession,
   } = useLiveSession();
@@ -79,6 +82,10 @@ export default function LiveSessionScreen() {
   const runningTable = tables.find((table) => table.id === runningTableId);
   const allPaused = !runningTableId;
   const budget = activeSession?.buyIn ?? 0;
+  const sessionBankroll = useMemo(
+    () => computeSessionBankroll(budget, tables),
+    [budget, tables],
+  );
   const sessionNet = remainingBudget - budget;
   const moneyTable = moneyModal
     ? tables.find((table) => table.id === moneyModal.tableId)
@@ -91,14 +98,14 @@ export default function LiveSessionScreen() {
     if (moneyModal?.kind !== 'stake' || !activeSession) return null;
     const unit = Number(bettingUnitInput);
     return estimateBasicStrategyRoR({
-      remainingBudget,
+      sessionBankroll,
       bettingUnit: Number.isFinite(unit) && unit > 0 ? unit : null,
       rules: moneyTableRules,
     });
   }, [
     moneyModal?.kind,
     activeSession,
-    remainingBudget,
+    sessionBankroll,
     bettingUnitInput,
     moneyTableRules,
   ]);
@@ -180,6 +187,46 @@ export default function LiveSessionScreen() {
       async () => {
         await discardSession();
         router.replace('/');
+      },
+    );
+  };
+
+  const onDeleteTable = (tableId: string) => {
+    const table = tables.find((item) => item.id === tableId);
+    if (!table) return;
+
+    if (!table.isPaused || table.stake > 0) {
+      const title = 'Pause before deleting';
+      const message = 'Pause this table before deleting it.';
+      if (Platform.OS === 'web') {
+        if (typeof globalThis !== 'undefined' && 'alert' in globalThis) {
+          (globalThis as { alert: (text: string) => void }).alert(
+            `${title}\n\n${message}`,
+          );
+        }
+        return;
+      }
+      Alert.alert(title, message);
+      return;
+    }
+
+    confirmAction(
+      {
+        title: 'Delete table?',
+        message: 'This removes the table and its P/L from the live session.',
+        confirmLabel: 'Delete',
+        destructive: true,
+      },
+      async () => {
+        try {
+          await deleteTable(tableId);
+          if (rulesTableId === tableId) setRulesTableId(null);
+          setTableError(null);
+        } catch (err) {
+          setTableError(
+            err instanceof Error ? err.message : 'Could not delete the table.',
+          );
+        }
       },
     );
   };
@@ -352,12 +399,13 @@ export default function LiveSessionScreen() {
                 table={table}
                 currency={currency}
                 rank={tableRanks.get(table.id)}
-                remainingBudget={remainingBudget}
+                sessionBankroll={sessionBankroll}
                 riskTolerance={activeSession.riskTolerance}
                 onPlay={() => openStakeModal(table.id)}
                 onPause={() => openResultsModal(table.id)}
                 onChangeName={(name) => void updateTable(table.id, { name })}
                 onOpenRules={() => setRulesTableId(table.id)}
+                onDelete={() => onDeleteTable(table.id)}
               />
             ))}
           </View>

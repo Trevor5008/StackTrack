@@ -81,21 +81,12 @@ Elapsed time and `hoursPlayed` come from **per-table timers** on
 `active_tables` / `session_tables`. Session-level timer columns remain for
 schema compatibility only.
 
-Schema v3 migration creates `casinos` from distinct non-empty session /
-active `location` strings, sets `casino_id`, and uses `"Unknown casino"` for
-empty/orphan rows.
-
-Schema v4 adds table timer columns and `session_tables.elapsed_ms`. If a live
-session already had wall-clock time and tables, that elapsed is moved onto the
-**first** active table as paused `accumulated_ms` so in-progress sessions are
-not zeroed.
-
-Schema v5 adds `remaining_budget` on `active_sessions` and `stake` on
-`active_tables`. In-progress rows with null `buy_in` get
-`buy_in = starting_bankroll` and `remaining_budget = buy_in`.
-
-Schema v6 adds `risk_tolerance` on `active_sessions` and `betting_unit` on
-`active_tables` / `session_tables` (RoR unknown until rules + unit are set).
+Schema **v6** is the baseline `CREATE` in `src/storage/db.ts` (casinos,
+`casino_id`, table timers, budget/stake, RoR columns). Older local files are
+not upgraded in place — wipe `stacktrack.db` (uninstall / clear app data) and
+relaunch. Casinos are created only when the user adds one, loads demo data, or
+AsyncStorage import calls `ensureCasino` (empty locations become
+`"Unknown casino"` at import time, not on every launch).
 
 ### active_tables
 
@@ -125,8 +116,10 @@ chips; `net_result += ending − stake`, stake clears, ending returns to
 **Risk of Ruin (basic strategy heuristic):** unknown until `rules_json` and
 `betting_unit` are set. Then
 `rorPct = 100 * exp(-units / (10 * max(HE, 0.05)))` with
-`units = remaining_budget / betting_unit`. Table is **not viable** when
-`rorPct > risk_tolerance`. See `src/lib/riskOfRuin.ts`.
+`units = session_bankroll / betting_unit`. Session bankroll is
+`remaining_budget + open stakes` (`budget + sum(net_result)`), so Play does
+not zero units. Table is **not viable** when `rorPct > risk_tolerance`.
+See `src/lib/riskOfRuin.ts` and `computeSessionBankroll`.
 
 ### session_tables
 
@@ -266,7 +259,7 @@ Computed in `src/lib/stats.ts` from settings + sessions:
 | `currentBankroll(starting, sessions)` | `starting + lifetimeProfitLoss` |
 | `totalSessions(sessions)` | `sessions.length` |
 | `totalHours(sessions)` | `sum(hoursPlayed)` |
-| `hourlyRate(sessions)` | `lifetimeProfitLoss / totalHours` (0 if no hours) |
+| `hourlyRate(sessions)` | `lifetimeProfitLoss / ceil(totalHours)` when hours > 0; else `0`. Ceiling avoids inflated $/hr on short (e.g. test) sessions; Hours cards still use exact `totalHours`. |
 | `winLossRecord(sessions)` | wins / losses / pushes |
 | `biggestWin(sessions)` | `max(netResult)` (0 if empty) |
 | `biggestLoss(sessions)` | `min(netResult)` (0 if empty) |

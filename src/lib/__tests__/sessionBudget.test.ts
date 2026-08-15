@@ -3,6 +3,7 @@ import {
   assertEndingChips,
   assertStake,
   computeRemainingBudget,
+  computeSessionBankroll,
   hasOpenStake,
 } from '@/src/lib/sessionBudget';
 
@@ -45,6 +46,12 @@ describe('sessionBudget', () => {
     // End cash-out is remaining; session net = cashOut - buyIn
     const cashOut = computeRemainingBudget(budget, tables);
     expect(cashOut - budget).toBe(-20);
+  });
+
+  test('session bankroll includes open stake', () => {
+    const tables = [{ netResult: 0, stake: 100 }];
+    expect(computeRemainingBudget(500, tables)).toBe(400);
+    expect(computeSessionBankroll(500, tables)).toBe(500);
   });
 
   test('hasOpenStake blocks end while chips are out', () => {

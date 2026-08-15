@@ -14,14 +14,14 @@ describe('riskOfRuin', () => {
   test('unknown without rules or betting unit', () => {
     expect(
       estimateBasicStrategyRoR({
-        remainingBudget: 500,
+        sessionBankroll: 500,
         bettingUnit: null,
         rules,
       }),
     ).toBeNull();
     expect(
       estimateBasicStrategyRoR({
-        remainingBudget: 500,
+        sessionBankroll: 500,
         bettingUnit: 25,
         rules: null,
       }),
@@ -30,12 +30,12 @@ describe('riskOfRuin', () => {
 
   test('formula is lower with more units', () => {
     const shallow = estimateBasicStrategyRoR({
-      remainingBudget: 250,
+      sessionBankroll: 250,
       bettingUnit: 25,
       rules,
     });
     const deep = estimateBasicStrategyRoR({
-      remainingBudget: 2500,
+      sessionBankroll: 2500,
       bettingUnit: 25,
       rules,
     });
@@ -46,18 +46,33 @@ describe('riskOfRuin', () => {
 
   test('higher house edge raises estimated RoR', () => {
     const soft = estimateBasicStrategyRoR({
-      remainingBudget: 500,
+      sessionBankroll: 500,
       bettingUnit: 25,
       rules: { ...rules, blackjackPayout: '3:2' },
     });
     const harsh = estimateBasicStrategyRoR({
-      remainingBudget: 500,
+      sessionBankroll: 500,
       bettingUnit: 25,
       rules: { ...rules, blackjackPayout: '6:5' },
     });
     expect(soft).not.toBeNull();
     expect(harsh).not.toBeNull();
     expect(harsh!.rorPct).toBeGreaterThan(soft!.rorPct);
+  });
+
+  test('units follow session bankroll not leftover remaining', () => {
+    const withStakeOut = estimateBasicStrategyRoR({
+      sessionBankroll: 1000,
+      bettingUnit: 25,
+      rules,
+    });
+    expect(withStakeOut?.units).toBe(40);
+    const emptyRemaining = estimateBasicStrategyRoR({
+      sessionBankroll: 0,
+      bettingUnit: 25,
+      rules,
+    });
+    expect(emptyRemaining?.rorPct).toBe(99.9);
   });
 
   test('viable when RoR at or below tolerance', () => {

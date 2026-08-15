@@ -76,6 +76,7 @@ flowchart TD
   Detail --> TableOverview[Tables with elapsed net RoR]
   Tables -->|Edit rules| RulesModal[TableRulesForm]
   RulesModal --> Tables
+  Tables -->|Delete when paused| Tables
 ```
 
 ### Bankroll → budget → stake
@@ -83,6 +84,7 @@ flowchart TD
 - **Start session**: choose session budget (`0 < budget ≤ currentBankroll`) and **risk tolerance** preset
 - **Play**: choose betting unit (`≥ table min`) and stake (`≤ remaining budget`); only one table may run
 - **Pause**: enter ending chips; `net = ending − stake`; chips return to remaining
+- **Delete table**: allowed only when the table is paused with no stake out; playing tables show an alert to pause first
 - **End**: confirmation only — persist `buyIn = budget`, `cashOut = remaining`,
   `netResult = cashOut − buyIn` (updates global bankroll via existing stats)
 - Block end while any table still has stake out / is playing
@@ -93,7 +95,7 @@ Helpers: `assertBudget`, `assertStake`, `computeRemainingBudget` in
 ### Risk of Ruin (basic strategy)
 
 - RoR is **unknown** until table rules and betting unit are set
-- Estimate uses remaining budget ÷ unit and approximate house edge (BS only; no counting)
+- Estimate uses session bankroll (`remaining + open stakes`) ÷ unit and approximate house edge (BS only; no counting)
 - If estimated RoR **>** session risk tolerance → **Not viable** visual (soft warn on Play)
 - Helpers: `estimateBasicStrategyRoR`, `isTableViable` in `src/lib/riskOfRuin.ts`
 
@@ -177,7 +179,9 @@ flowchart LR
 ```
 
 Dashboard lists casinos with scoped aggregates. Casino screen filters sessions
-by `casinoId` then reuses the same stats helpers.
+by `casinoId` then reuses the same stats helpers. Hourly rate on the casino
+screen uses that filtered list and `ceil(totalHours)` so brief sits do not
+show extreme $/hr.
 
 ## Layered architecture
 

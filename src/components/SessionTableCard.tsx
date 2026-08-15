@@ -26,12 +26,13 @@ type LiveSessionTableCardProps = {
   table: ActiveTable;
   currency: string;
   rank?: TableRankInfo;
-  remainingBudget: number;
+  sessionBankroll: number;
   riskTolerance: number;
   onPlay: () => void;
   onPause: () => void;
   onChangeName: (name: string) => void;
   onOpenRules: () => void;
+  onDelete: () => void;
 };
 
 type SummarySessionTableCardProps = {
@@ -39,8 +40,8 @@ type SummarySessionTableCardProps = {
   table: SessionTable;
   currency: string;
   rank?: TableRankInfo;
-  /** Budget depth for RoR estimate (typically session cash-out). */
-  remainingBudget: number;
+  /** Session chips still yours (cash-out after end; budget + nets while live). */
+  sessionBankroll: number;
 };
 
 export type SessionTableCardProps =
@@ -58,7 +59,7 @@ function SummaryTableCard({
   table,
   currency,
   rank,
-  remainingBudget,
+  sessionBankroll,
 }: SummarySessionTableCardProps) {
   const rules = parseTableRules(table.rulesJson);
   const { title, subtitle } = formatTableCardTitle(
@@ -67,7 +68,7 @@ function SummaryTableCard({
     table.name,
   );
   const ror = estimateBasicStrategyRoR({
-    remainingBudget,
+    sessionBankroll,
     bettingUnit: table.bettingUnit,
     rules,
   });
@@ -123,16 +124,24 @@ function SummaryTableCard({
   );
 }
 
+// Live table card component w/ crud
+// Create and delete actions are only available for paused tables
+// Create action is to set table rules
+// Delete action is to delete the table
+// Edit action is to edit the table rules
+// Play action is to play the table
+// Pause action is to pause the table
 function LiveTableCard({
   table,
   currency,
   rank,
-  remainingBudget,
+  sessionBankroll,
   riskTolerance,
   onPlay,
   onPause,
   onChangeName,
   onOpenRules,
+  onDelete,
 }: LiveSessionTableCardProps) {
   const [expanded, setExpanded] = useState(false);
   const rules = parseTableRules(table.rulesJson);
@@ -146,14 +155,17 @@ function LiveTableCard({
     isPaused: table.isPaused,
     segmentStartedAt: table.segmentStartedAt,
   });
+  // Estimate the basic strategy RoR
   const ror = estimateBasicStrategyRoR({
-    remainingBudget,
+    sessionBankroll,
     bettingUnit: table.bettingUnit,
     rules,
   });
+  // Check if the table is viable
   const viable =
     ror != null ? isTableViable(ror.rorPct, riskTolerance) : null;
 
+  // Return/render the live table card component
   return (
     <View style={[styles.card, rank?.isBest && styles.cardBest]}>
       <Pressable
@@ -189,6 +201,7 @@ function LiveTableCard({
           >
             {formatCurrency(table.netResult, currency, true)}
           </Text>
+          {/* Display the RoR if it is available and viable */}
           {ror ? (
             <Text
               style={[
@@ -202,6 +215,7 @@ function LiveTableCard({
               {viable ? ' · Viable' : ' · Not viable'}
             </Text>
           ) : (
+            // Display RoR unknown if it is not available
             <Text style={styles.rorUnknown}>RoR unknown</Text>
           )}
         </View>
@@ -242,6 +256,7 @@ function LiveTableCard({
           <Text style={styles.readOnly}>
             Table P/L: {formatCurrency(table.netResult, currency, true)}
           </Text>
+          {/* Edit table rules button */}
           <Pressable
             onPress={onOpenRules}
             style={({ pressed }) => [
@@ -249,9 +264,25 @@ function LiveTableCard({
               pressed && styles.pressed,
             ]}
           >
-            <Text style={styles.rulesButtonText}>
-              {rules ? formatTableRulesSummary(rules) : 'Set table rules'}
+            <Text style={styles.rulesButtonTitle}>
+              {rules ? 'Edit table rules' : 'Set table rules'}
             </Text>
+            {rules ? (
+              <Text style={styles.rulesButtonSubtitle}>
+                {formatTableRulesSummary(rules)}
+              </Text>
+            ) : null}
+          </Pressable>
+          {/* Delete table button (only paused tables can be deleted)*/}
+          <Pressable
+            onPress={onDelete}
+            style={({ pressed }) => [
+              styles.deleteButton,
+              pressed && styles.pressed,
+            ]}
+            disabled={!table.isPaused}
+          >
+            <Text style={styles.deleteButtonText}>Delete table</Text>
           </Pressable>
         </View>
       ) : null}

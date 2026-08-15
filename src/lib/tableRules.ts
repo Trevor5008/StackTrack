@@ -10,6 +10,7 @@ const PAYOUTS: readonly BlackjackPayout[] = ['3:2', '6:5'];
 const DEALER17: readonly Dealer17[] = ['S17', 'H17'];
 const DEFAULT_MINIMUM_BET = 25;
 
+// Default table rules
 export function defaultTableRules(): TableRules {
   return {
     decks: 6,
@@ -20,6 +21,8 @@ export function defaultTableRules(): TableRules {
     minimumBet: DEFAULT_MINIMUM_BET,
   };
 }
+
+// Helper functions for verifying table rules
 
 function isDeckCount(value: unknown): value is DeckCount {
   return typeof value === 'number' && (DECKS as readonly number[]).includes(value);
@@ -50,11 +53,13 @@ function isTableRulesCore(value: unknown): value is Omit<TableRules, 'minimumBet
   );
 }
 
+// Verify table rules are set and valid
 export function isTableRules(value: unknown): value is TableRules {
   if (!isTableRulesCore(value)) return false;
   return isNonNegativeNumber((value as Partial<TableRules>).minimumBet);
 }
 
+// Normalize the minimum bet to a valid number
 function normalizeMinimumBet(value: unknown): number {
   return isNonNegativeNumber(value) ? value : DEFAULT_MINIMUM_BET;
 }
@@ -81,10 +86,12 @@ export function parseTableRules(json: string | null | undefined): TableRules | n
   }
 }
 
+// Serialize the table rules to a JSON string
 export function serializeTableRules(rules: TableRules): string {
   if (!isTableRules(rules)) {
     throw new Error('Cannot serialize invalid table rules.');
   }
+  // return the JSON string of the rules
   return JSON.stringify(rules);
 }
 

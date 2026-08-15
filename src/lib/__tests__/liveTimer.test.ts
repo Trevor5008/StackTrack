@@ -1,4 +1,5 @@
 import {
+  assertCanDeleteTable,
   assertCanPlayTable,
   computeElapsedMs,
   findRunningTable,
@@ -84,6 +85,18 @@ describe('liveTimer', () => {
     expect(() => assertCanPlayTable(tables, 'b')).toThrow(/Pause the current/);
     expect(() => assertCanPlayTable(tables, 'a')).not.toThrow();
     expect(findRunningTable(tables)?.id).toBe('a');
+  });
+
+  test('assertCanDeleteTable requires paused with no stake', () => {
+    expect(() =>
+      assertCanDeleteTable({ isPaused: false, stake: 0 }),
+    ).toThrow(/Pause this table/);
+    expect(() =>
+      assertCanDeleteTable({ isPaused: true, stake: 50 }),
+    ).toThrow(/Pause this table/);
+    expect(() =>
+      assertCanDeleteTable({ isPaused: true, stake: 0 }),
+    ).not.toThrow();
   });
 
   test('msToHoursPlayed rounds to two decimals', () => {

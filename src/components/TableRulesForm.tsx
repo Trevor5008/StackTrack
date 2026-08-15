@@ -13,8 +13,10 @@ import {
   TableRules,
 } from '@/src/types/tableRules';
 
+// Import styles for the form
 import { styles } from './TableRulesForm.styles';
 
+// Define the props for the form
 type TableRulesFormProps = {
   initialRules: TableRules;
   onCancel: () => void;
@@ -22,6 +24,7 @@ type TableRulesFormProps = {
   saving?: boolean;
 };
 
+// Define the choice row component
 function ChoiceRow<T extends string | number>({
   label,
   options,

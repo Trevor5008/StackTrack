@@ -1,5 +1,6 @@
 import { Session, WinLossRecord } from '@/src/types/session';
 
+// Get the sessions for a casino
 export function sessionsForCasino(
   sessions: Session[],
   casinoId: string,
@@ -19,6 +20,7 @@ export function sessionsForCasino(
  *   </SessionContext.Provider>
  * </SessionProvider>
  */
+// Calculate the lifetime profit loss
 export function lifetimeProfitLoss(sessions: Session[]): number {
   return sessions.reduce((total, session) => total + session.netResult, 0);
 }
@@ -36,6 +38,7 @@ export function lifetimeProfitLoss(sessions: Session[]): number {
  *   </SessionContext.Provider>
  * </SessionProvider>
  */
+// Calculate the current bankroll
 export function currentBankroll(
   startingBankroll: number,
   sessions: Session[],
@@ -90,9 +93,12 @@ export function totalHours(sessions: Session[]): number {
  *   </SessionContext.Provider>
  * </SessionProvider>
  */
+
+// Calculate the hourly rate
+// Round up hours to the next hour if it is not a whole number
 export function hourlyRate(sessions: Session[]): number {
   const hours = totalHours(sessions);
-  return hours === 0 ? 0 : lifetimeProfitLoss(sessions) / hours;
+  return hours > 0 ? lifetimeProfitLoss(sessions) / Math.ceil(hours) : 0;
 }
 
 /**

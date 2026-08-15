@@ -23,6 +23,7 @@ export function isRiskTolerancePreset(
   return (RISK_TOLERANCE_PRESETS as readonly number[]).includes(value);
 }
 
+// Assert that the risk tolerance is a valid preset
 export function assertRiskTolerance(value: number): RiskTolerancePreset {
   if (!isRiskTolerancePreset(value)) {
     throw new Error('Pick a risk tolerance from the preset list.');
@@ -30,6 +31,7 @@ export function assertRiskTolerance(value: number): RiskTolerancePreset {
   return value;
 }
 
+// Assert that the betting unit is a valid number and greater than zero
 export function assertBettingUnit(
   bettingUnit: number,
   minimumBet: number,
@@ -45,23 +47,24 @@ export function assertBettingUnit(
 /**
  * Approximate basic-strategy RoR (%).
  * Unknown until rules and betting unit are both set.
+ * Pass session bankroll (remaining + open stakes), not leftover remaining.
  * Higher units and lower HE → lower estimated RoR.
  */
 export function estimateBasicStrategyRoR(input: {
-  remainingBudget: number;
+  sessionBankroll: number;
   bettingUnit: number | null | undefined;
   rules: TableRules | null | undefined;
 }): RoREstimate | null {
-  const { remainingBudget, bettingUnit, rules } = input;
+  const { sessionBankroll, bettingUnit, rules } = input;
   if (!rules || bettingUnit == null || !Number.isFinite(bettingUnit)) {
     return null;
   }
-  if (bettingUnit <= 0 || !Number.isFinite(remainingBudget)) {
+  if (bettingUnit <= 0 || !Number.isFinite(sessionBankroll)) {
     return null;
   }
 
   const houseEdge = estimateHouseEdge(rules);
-  const units = remainingBudget / bettingUnit;
+  const units = sessionBankroll / bettingUnit;
   if (!Number.isFinite(units) || units < 0) {
     return null;
   }
@@ -77,6 +80,7 @@ export function estimateBasicStrategyRoR(input: {
   };
 }
 
+// Estimate if the table is viable based on the RoR compared against risk tolerance
 export function isTableViable(
   rorPct: number,
   riskTolerance: number,
@@ -84,6 +88,7 @@ export function isTableViable(
   return rorPct <= riskTolerance;
 }
 
+// Format the RoR percentage
 export function formatRoR(rorPct: number | null | undefined): string {
   if (rorPct == null || !Number.isFinite(rorPct)) return '—';
   return `${rorPct.toFixed(1)}%`;
