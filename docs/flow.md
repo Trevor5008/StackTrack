@@ -133,6 +133,10 @@ sequenceDiagram
   Live->>DB: session detail reads snapshot read-only
 ```
 
+`TableRulesForm` opens inside shared `FormSheet`, which uses keyboard avoiding plus a
+scrollable body so fields stay reachable when the soft keyboard is open (same idea as
+edit-session’s `KeyboardAvoidingView` + `ScrollView`).
+
 ## Add session flow
 
 ```mermaid
