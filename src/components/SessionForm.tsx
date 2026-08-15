@@ -40,6 +40,7 @@ function isValidDate(value: string): boolean {
   );
 }
 
+// Define the session form component
 export function SessionForm({
   initialValues,
   startingBankroll,
@@ -48,6 +49,7 @@ export function SessionForm({
   onSubmit,
 }: SessionFormProps) {
   const { casinos, refreshCasinos } = useSessions();
+  // Initialize the form state
   const [form, setForm] = useState<FormState>({
     date: initialValues?.date ?? today(),
     casinoId: initialValues?.casinoId ?? '',

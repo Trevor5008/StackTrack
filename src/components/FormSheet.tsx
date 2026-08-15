@@ -11,6 +11,8 @@ import {
 import { ActionButton } from '@/src/components/ActionButton';
 
 import { styles } from './FormSheet.styles';
+// Import the ScrollView component from react-native-gesture-handler
+import { ScrollView } from 'react-native-gesture-handler';
 
 type FormSheetProps = PropsWithChildren<{
   visible: boolean;
@@ -30,6 +32,7 @@ type FormSheetProps = PropsWithChildren<{
   showActions?: boolean;
 }>;
 
+// Define the form sheet component
 export function FormSheet({
   visible,
   onClose,
@@ -56,6 +59,7 @@ export function FormSheet({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.backdrop}
       >
+        {/* Dismiss when tapping the dimmed backdrop */}
         {dismissOnBackdrop ? (
           <Pressable
             style={styles.backdropDismiss}
@@ -63,13 +67,20 @@ export function FormSheet({
             onPress={onClose}
           />
         ) : null}
+        {/* Card container */}
         <View style={styles.card}>
           {title ? <Text style={styles.title}>{title}</Text> : null}
           {header}
-          {children}
+          {/* Scrollable content */}
+          <ScrollView keyboardShouldPersistTaps="handled">
+            {children}
+          </ScrollView>
+          {/* Error message */}
           {error ? <Text style={styles.error}>{error}</Text> : null}
+          {/* Actions */}
           {showActions ? (
             <View style={styles.actions}>
+              {/* Secondary action */}
               <ActionButton
                 label={secondaryLabel}
                 onPress={onClose}
